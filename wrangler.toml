@@ -1,0 +1,14 @@
+name = "ba-cafe-timer-2"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+
+[assets]
+directory = "./public"
+run_worker_first = ["/api/*"]
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+FIREBASE_PROJECT_ID = "ba-cafe-timer-2"
+

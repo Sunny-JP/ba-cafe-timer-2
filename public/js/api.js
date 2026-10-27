@@ -1,0 +1,36 @@
+// /api/* 呼び出しのみ。Firestore / Drive には直接触れない。
+import { getDriveToken, getIdToken, ReauthRequired } from './auth.js';
+
+export class ApiError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function request(method, path, body, { drive = true } = {}, retry = true) {
+  const headers = { Authorization: `Bearer ${await getIdToken()}` };
+  if (drive) headers['X-Drive-Token'] = await getDriveToken(!retry);
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (res.ok) return data;
+  if (res.status === 401 && data.code === 'drive_token') {
+    if (retry) return request(method, path, body, { drive }, false);
+    throw new ReauthRequired(data.error);
+  }
+  throw new ApiError(res.status, data.error ?? `エラー (${res.status})`);
+}
+
+export const api = {
+  bootstrap: (month) => request('GET', `/api/bootstrap?month=${month}`),
+  taps: (month) => request('GET', `/api/taps?month=${month}`),
+  tap: () => request('POST', '/api/taps'),
+  saveProfile: (patch) => request('PUT', '/api/profile', patch),
+  addBond: (bond) => request('POST', '/api/relationship', bond),
+  deleteBond: (id) => request('DELETE', '/api/relationship', { id }),
+  registerDevice: (token) => request('PUT', '/api/devices', { token }, { drive: false }),
+  unregisterDevice: (token) => request('DELETE', '/api/devices', { token }, { drive: false }),
+  deleteAccount: () => request('DELETE', '/api/account'),
+  importData: (data) => request('POST', '/api/import', data),
+};
