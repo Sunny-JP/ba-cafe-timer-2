@@ -7,6 +7,8 @@ import {
   prevMonth,
   monthRange,
   shouldScheduleNotification,
+  nextTapTime,
+  daySlots,
   uuidv7,
 } from '../public/js/time.js';
 
@@ -48,4 +50,19 @@ test('UUID v7: 形式と時刻順', () => {
   const b = uuidv7(1_700_000_001_000);
   assert.match(a, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.ok(a < b);
+});
+
+test('次のタップ時刻: 3時間後か境界の早い方', () => {
+  assert.equal(nextTapTime(jst('2026-05-10T10:00:00')), jst('2026-05-10T13:00:00'));
+  assert.equal(nextTapTime(jst('2026-05-10T15:00:00')), jst('2026-05-10T16:00:00'));
+});
+
+test('日の枠: 4:00 JST 始まりの3時間8枠', () => {
+  const taps = [{ tap_time: '2026-05-10T08:39:00+09:00' }, { tap_time: '2026-05-10T08:50:00+09:00' }, { tap_time: '2026-05-10T20:31:00+09:00' }];
+  const slots = daySlots(jst('2026-05-10T21:00:00'), taps);
+  assert.equal(slots[0].start, jst('2026-05-10T04:00:00'));
+  assert.equal(slots[7].start, jst('2026-05-11T01:00:00'));
+  assert.equal(slots[0].tap, null);
+  assert.equal(slots[1].tap, jst('2026-05-10T08:39:00'));
+  assert.equal(slots[5].tap, jst('2026-05-10T20:31:00'));
 });

@@ -5,6 +5,7 @@ export const JST_OFFSET = 9 * HOUR;
 export const TAP_INTERVAL = 3 * HOUR;
 export const TICKET_COOLDOWN = 20 * HOUR;
 export const DUPLICATE_WINDOW = 60 * 1000;
+const DAY = 24 * HOUR;
 
 const pad = (n, w = 2) => String(n).padStart(w, '0');
 
@@ -91,4 +92,17 @@ export function uuidv7(now = Date.now()) {
   b[8] = (b[8] & 0x3f) | 0x80;
   const h = [...b].map((x) => pad(x.toString(16))).join('');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// 次にタップできる時刻。3時間後、または次の 4:00/16:00 のどちらか早い方(境界でリセットされる)。
+export const nextTapTime = (lastMs) => Math.min(lastMs + TAP_INTERVAL, nextBoundary(lastMs));
+
+// 現在のゲーム日(4:00 JST 始まり)を3時間ごとの8枠に分け、各枠の最初のタップを割り当てる。
+export function daySlots(now, taps) {
+  const dayStart = Math.floor((now + JST_OFFSET - 4 * HOUR) / DAY) * DAY + 4 * HOUR - JST_OFFSET;
+  const times = taps.map((t) => Date.parse(t.tap_time)).sort((a, b) => a - b);
+  return Array.from({ length: 8 }, (_, k) => {
+    const start = dayStart + k * TAP_INTERVAL;
+    return { start, tap: times.find((ms) => ms >= start && ms < start + TAP_INTERVAL) ?? null };
+  });
 }
