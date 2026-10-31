@@ -24,39 +24,42 @@
   <script src="https://accounts.google.com/gsi/client" async></script>
 </head>
 <body>
-  <p id="loading" class="center">読み込み中…</p>
+  <p id="loading" class="center" data-i18n="loading"></p>
 
   <main id="login" class="center" hidden>
     <h1>Cafe Timer</h1>
-    <p>Google アカウントでログインすると、記録はあなたの Google Drive に保存されます。</p>
-    <button id="login-btn" class="primary">Google でログイン</button>
+    <p data-i18n="loginText"></p>
+    <button id="login-btn" class="primary" data-i18n="loginBtn"></button>
   </main>
 
   <div id="app" hidden>
     <div id="reauth" class="banner" hidden>
-      <span>Drive の認証が切れました。</span>
-      <button id="reauth-btn">再認証</button>
+      <span data-i18n="reauthMsg"></span>
+      <button id="reauth-btn" data-i18n="reauthBtn"></button>
     </div>
     <header class="appbar">
-      <span>Cafe Timer</span>
+      <button id="home-btn" class="home" data-act="home">Cafe Timer</button>
       <div class="actions">
         <button id="theme-btn" class="icon" data-act="theme-toggle"></button>
-        <button id="menu-btn" class="icon" aria-label="メニュー"></button>
+        <button id="menu-btn" class="icon" data-i18n-aria="menu"></button>
       </div>
     </header>
     <main id="view"></main>
     <nav>
-      <button data-tab="timer" aria-selected="true" aria-label="タイマー"></button>
-      <button data-tab="calendar" aria-label="カレンダー"></button>
-      <button data-tab="bond" aria-label="絆"></button>
+      <button data-tab="timer" aria-selected="true" data-i18n-aria="navTimer"></button>
+      <button data-tab="calendar" data-i18n-aria="navCalendar"></button>
+      <button data-tab="bond" data-i18n-aria="navBond"></button>
     </nav>
   </div>
 
   <dialog id="menu"><div id="menu-body"></div></dialog>
 
-  <dialog id="content" autofocus>
-    <div id="content-body"></div>
-    <button id="content-close" class="primary">閉じる</button>
+  <dialog id="confirm">
+    <p id="confirm-msg"></p>
+    <div class="confirm-actions">
+      <button id="confirm-cancel" data-i18n="cancel"></button>
+      <button id="confirm-ok" class="primary"></button>
+    </div>
   </dialog>
   <div id="toast" role="status" hidden></div>
 

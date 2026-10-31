@@ -118,7 +118,6 @@ dialog::backdrop { background: rgba(0, 0, 0, .4); }
 dialog h2 { margin-top: 16px; }
 dialog h2:first-child { margin-top: 0; }
 dialog ul { padding-left: 1.2em; }
-#content button { margin-top: 16px; }
 
 #toast {
   position: fixed; left: 16px; right: 16px; bottom: calc(88px + env(safe-area-inset-bottom));
@@ -267,7 +266,6 @@ dialog#menu { padding: 24px 16px; }
 hr { margin: 20px 0; }
 .seg { margin: 0 12px 4px; }
 .field { padding: 16px 12px 0; }
-#content { padding: 32px 28px; }
 #app > nav button { height: 60px; }
 
 /* ---- トランジション (短く控えめに: 100〜200ms) ---- */
@@ -480,28 +478,27 @@ html { overflow-x: clip; }
 .day.hi { color: var(--on-primary); }
 
 /* ---- メニューのページ本文 (content.html) ---- */
-#content { font-size: .9375rem; line-height: 1.8; }
-#content h2 { font-size: 1.25rem; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--outline); }
-#content h3 { margin: 28px 0 8px; font-size: 1rem; }
-#content h3.group { margin-top: 24px; padding-left: 10px; border-left: 3px solid var(--primary); }
-#content p, #content ul, #content dl { margin: 0 0 12px; }
-#content ul { padding-left: 1.3em; }
-#content li { margin: 4px 0; }
-#content dt { margin-top: 18px; font-weight: 500; }
-#content dd { margin: 4px 0 0; color: var(--on-variant); font-size: .875rem; }
-#content a { color: var(--primary); }
-#content .right { text-align: right; margin-top: 24px; }
-#content .note { margin: 16px 0; padding: 12px 16px; border-radius: 12px; font-size: .875rem; line-height: 1.7; }
-#content .note p { margin: 0 0 6px; }
-#content .note p:last-child { margin: 0; }
-#content .note.info { background: color-mix(in srgb, var(--primary) 14%, transparent); }
-#content .note.warn { background: color-mix(in srgb, var(--error) 14%, transparent); }
-#content .log { list-style: none; padding: 0; max-height: 240px; overflow-y: auto; }
-#content .log li { display: flex; gap: 12px; font-size: .875rem; }
-#content .log span { flex: none; width: 5.5em; color: var(--on-variant); }
+.doc { font-size: .9375rem; line-height: 1.8; }
+.doc h2 { font-size: 1.25rem; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--outline); }
+.doc h3 { margin: 6px 0 0; font-size: 1rem; line-height: 1.5; }
+.doc h3.group { margin-top: 8px; padding-left: 10px; border-left: 3px solid var(--primary); }
+.doc p, .doc ul, .doc dl { margin: 0 0 8px; }
+.doc ul { padding-left: 1.3em; }
+.doc li { margin: 4px 0; }
+.doc dt { margin-top: 18px; font-weight: 500; }
+.doc dd { margin: 4px 0 0; color: var(--on-variant); font-size: .875rem; }
+.doc a { color: var(--primary); }
+.doc .right { text-align: right; margin-top: 24px; }
+.doc .note { margin: 16px 0; padding: 12px 16px; border-radius: 12px; font-size: .875rem; line-height: 1.7; }
+.doc .note p { margin: 0 0 6px; }
+.doc .note p:last-child { margin: 0; }
+.doc .note.info { background: color-mix(in srgb, var(--primary) 14%, transparent); }
+.doc .note.warn { background: color-mix(in srgb, var(--error) 14%, transparent); }
+.doc .log { list-style: none; padding: 0; max-height: 240px; overflow-y: auto; }
+.doc .log li { display: flex; gap: 12px; font-size: .875rem; }
+.doc .log span { flex: none; width: 5.5em; color: var(--on-variant); }
 
 /* ---- 閉じるボタンは右下に常時表示 ---- */
-#content-close { position: sticky; bottom: 12px; display: block; margin: 16px 0 0 auto; }
 
 /* ---- ドロップダウンの開閉トランジション (閉じるときも動かすため hidden は使わない) ---- */
 .dd-list {
@@ -581,3 +578,16 @@ html { overflow-x: clip; }
 .dd-list button:has(.l1) { height: auto; min-height: 44px; padding-block: 6px; }
 .dd-list button[aria-selected="true"] .l2 { color: inherit; opacity: .75; }
 .field .dd-list { max-width: 100%; }
+
+/* ---- 確認ダイアログ ---- */
+dialog#confirm { width: min(88vw, 360px); margin: auto; padding: 24px; }
+#confirm-msg { line-height: 1.7; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+#confirm-ok.danger { background: var(--error); color: var(--surface); }
+#confirm button.primary { clip-path: none; border-radius: 24px; }
+#confirm-cancel { border-radius: 24px; }
+.gift-cat { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- ヘッダーのタイトル (タイマーへ戻る) ---- */
+button.home { height: auto; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+button.home:hover:not(:disabled) { background: transparent; }

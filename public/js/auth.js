@@ -13,7 +13,7 @@ export const firebaseConfig = {
   measurementId: "G-9NNR3Y3H10",
 };
 // Google Cloud の OAuth ウェブクライアント ID (無音更新用)
-const GOOGLE_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = "628000422074-hrfs7ptufkgvcbd0p2cuu1qdlb5sd52u.apps.googleusercontent.com";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
 const STORE_KEY = "ct.drive";
 
@@ -24,14 +24,14 @@ export class ReauthRequired extends Error {}
 
 const loadDrive = () => {
   try {
-    return JSON.parse(sessionStorage.getItem(STORE_KEY)) ?? null;
+    return JSON.parse(localStorage.getItem(STORE_KEY)) ?? null;
   } catch {
     return null;
   }
 };
 const saveDrive = (token, expiresIn = 3500) => {
   try {
-    sessionStorage.setItem(STORE_KEY, JSON.stringify({ token, exp: Date.now() + expiresIn * 1000 }));
+    localStorage.setItem(STORE_KEY, JSON.stringify({ token, exp: Date.now() + expiresIn * 1000 }));
   } catch {
     /* 保存できなくても動作する */
   }
@@ -52,7 +52,7 @@ export async function login() {
 
 export async function logout() {
   try {
-    sessionStorage.removeItem(STORE_KEY);
+    localStorage.removeItem(STORE_KEY);
   } catch {
     /* noop */
   }
@@ -64,8 +64,14 @@ export async function getIdToken() {
   return auth.currentUser.getIdToken();
 }
 
-// Google Identity Services による無音更新
+// Google Identity Services による無音更新。同時に複数走らないよう 1 本にまとめる
+let refreshing = null;
 function silentRefresh() {
+  refreshing ??= requestToken().finally(() => (refreshing = null));
+  return refreshing;
+}
+
+function requestToken() {
   return new Promise((resolve, reject) => {
     const gis = window.google?.accounts?.oauth2;
     if (!gis) return reject(new ReauthRequired("GIS unavailable"));
@@ -99,3 +105,14 @@ export async function getDriveToken(force = false) {
   if (!force && saved && saved.exp > Date.now() + 60000) return saved.token;
   return silentRefresh();
 }
+
+// 期限切れになる前に裏で更新し、復帰時(タブを開き直したときなど)にも確認する
+const REFRESH_MARGIN = 5 * 60000;
+function refreshIfNeeded() {
+  const saved = loadDrive();
+  if (!auth.currentUser || (saved && saved.exp > Date.now() + REFRESH_MARGIN)) return;
+  silentRefresh().catch(() => {}); // 失敗時は次の API 呼び出しで再認証バナーが出る
+}
+setInterval(refreshIfNeeded, 60000);
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refreshIfNeeded());
+addEventListener("online", refreshIfNeeded);

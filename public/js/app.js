@@ -1,8 +1,9 @@
 // 起動・タブ切替・状態管理。
 import { ReauthRequired, login, logout, onUser } from './auth.js';
 import { api } from './api.js';
+import { applyStatic, getLang, setLang, t } from './i18n.js';
 import { disablePush, enablePush, pushEnabled, pushSupported } from './push.js';
-import { BOND_EXP, CHARACTERS } from '../data/gifts.js';
+import { BOND_EXP, BOND_MAX, CHARACTERS } from '../data/gifts.js';
 import { logicalMonth, nextMonth, prevMonth, uuidv7 } from './time.js';
 import {
   DEFAULT_ACCENT,
@@ -14,7 +15,9 @@ import {
   icon,
   renderBond,
   renderCalendar,
+  renderDoc,
   renderMenu,
+  renderSettings,
   renderTimer,
   tick,
 } from './views.js';
@@ -31,6 +34,25 @@ const toast = (msg) => {
   clearTimeout(toast.t);
   toast.t = setTimeout(() => (el.hidden = true), 3500);
 };
+
+// ブラウザ標準の confirm の代わりに使う独自の確認ダイアログ
+function confirmDialog(message, okLabel, danger = false) {
+  const dlg = $('#confirm');
+  $('#confirm-msg').textContent = message;
+  const ok = $('#confirm-ok');
+  ok.textContent = okLabel;
+  ok.classList.toggle('danger', danger);
+  dlg.returnValue = '';
+  dlg.showModal();
+  return new Promise((resolve) => {
+    const done = (v) => {
+      dlg.close(v ? 'ok' : '');
+    };
+    ok.onclick = () => done(true);
+    $('#confirm-cancel').onclick = () => done(false);
+    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'ok'), { once: true });
+  });
+}
 
 const store = {
   get(k, fallback, allowed) {
@@ -51,7 +73,7 @@ const store = {
 };
 
 const state = {
-  mode: store.get('mode', 'auto', MODES.map((m) => m[0])),
+  mode: store.get('mode', 'auto', MODES),
   accent: /^#[0-9a-f]{6}$/i.test(store.get('accent', '', null) ?? '') ? store.get('accent', '', null) : DEFAULT_ACCENT,
   user: null,
   tab: 'timer',
@@ -80,7 +102,7 @@ function render(animate = false) {
   view.innerHTML =
     tab === 'timer' && wide.matches
       ? `<div class="cols"><div>${renderTimer(state)}</div><div>${renderCalendar(state)}</div></div>`
-      : { timer: renderTimer, calendar: renderCalendar, bond: renderBond }[tab](state);
+      : { timer: renderTimer, calendar: renderCalendar, bond: renderBond, settings: renderSettings, doc: renderDoc }[tab](state);
   if ($('#menu').open) renderMenuBody();
   tick(view);
   for (const b of document.querySelectorAll('nav button')) b.setAttribute('aria-selected', b.dataset.tab === tab);
@@ -279,10 +301,29 @@ function applyTheme() {
   else root.dataset.mode = state.mode;
   root.style.setProperty('--accent', state.accent);
   $('#theme-btn').innerHTML = icon(isDark() ? 'sun' : 'moon');
-  $('#theme-btn').setAttribute('aria-label', isDark() ? 'ライトモードにする' : 'ダークモードにする');
+  $('#theme-btn').setAttribute('aria-label', t(isDark() ? 'toLight' : 'toDark'));
 }
 
-let contentHtml = null;
+// 文書は言語ごとのファイル(content.<lang>.html)。訳がない文書は日本語版を注記付きで出す
+const docCache = {};
+async function fetchDocs(lang) {
+  docCache[lang] ??= fetch(lang === 'ja' ? '/content.html' : `/content.${lang}.html`)
+    .then((r) => (r.ok ? r.text() : ''))
+    .then((html) => {
+      const tpl = document.createElement('template');
+      tpl.innerHTML = html;
+      return tpl.content;
+    })
+    .catch(() => document.createDocumentFragment());
+  return docCache[lang];
+}
+async function loadDoc(id) {
+  const lang = getLang();
+  const own = (await fetchDocs(lang)).querySelector(`#${id}`);
+  if (own) return own.innerHTML;
+  const ja = (await fetchDocs('ja')).querySelector(`#${id}`);
+  return `<p class="note info">${t('docFallback')}</p>${ja?.innerHTML ?? ''}`;
+}
 
 function show(screen) {
   for (const id of ['loading', 'login', 'app']) $(`#${id}`).hidden = id !== screen;
@@ -347,7 +388,7 @@ const actions = {
       state.lastTap = data.tap;
       state.monthTaps = state.monthTaps.map((t) => (t === temp ? data.tap : t));
       if (onCurrent) state.calTaps = state.monthTaps;
-      if (!data.scheduled && state.pushOn) toast('境界を跨ぐため通知は予約されません');
+      if (!data.scheduled && state.pushOn) toast(t('noPushSchedule'));
     } else {
       Object.assign(state, prev);
     }
@@ -372,6 +413,13 @@ const actions = {
       render();
     } else if (field === 'tz') {
       saveProfile({ timezone: value || null });
+    } else if (field === 'lang') {
+      setLang(value);
+      applyTheme();
+      (state.tab === 'doc' ? loadDoc(state.doc) : Promise.resolve(null)).then((html) => {
+        if (html !== null) state.docHtml = html;
+        render();
+      });
     }
   },
   'gifts-scroll'(b) {
@@ -392,7 +440,7 @@ const actions = {
     render();
   },
   async 'bond-del'(b) {
-    if (!confirm('この記録を削除しますか?')) return;
+    if (!(await confirmDialog(t('confirmDelBond'), t('del'), true))) return;
     if (await guarded(() => api.deleteBond(b.dataset.id))) {
       state.relationship = state.relationship.filter((x) => x.id !== b.dataset.id);
       state.bondLevel = null;
@@ -408,33 +456,43 @@ const actions = {
     render();
   },
   async doc(b) {
-    contentHtml ??= await (await fetch('/content.html')).text();
-    const tpl = document.createElement('template');
-    tpl.innerHTML = contentHtml;
-    $('#content-body').innerHTML = tpl.content.querySelector(`#${b.dataset.doc}`)?.innerHTML ?? '';
-    $('#content').showModal(); // メニューは開いたまま重ねて表示する
-    $('#content').scrollTop = 0; // 常に先頭から表示する
+    state.doc = b.dataset.doc;
+    state.docHtml = await loadDoc(state.doc);
+    $('#menu').close();
+    state.tab = 'doc';
+    render(true);
+    scrollTo(0, 0);
   },
   mode(b) {
     state.mode = b.dataset.mode;
     store.set('mode', state.mode);
     applyTheme();
-    renderMenuBody();
+    render();
+  },
+  home() {
+    if (state.tab === 'timer') return scrollTo(0, 0);
+    state.tab = 'timer';
+    render(true);
+    scrollTo(0, 0);
+  },
+  settings() {
+    $('#menu').close();
+    state.tab = 'settings';
+    render(true);
   },
   'accent-reset'() {
     state.accent = DEFAULT_ACCENT;
     store.set('accent', state.accent);
     applyTheme();
-    renderMenuBody();
+    render();
   },
-  logout() {
-    $('#menu').close();
-    return logout();
+  async logout() {
+    if (await confirmDialog(t('confirmLogout'), t('logout'))) return logout();
   },
   async 'delete-account'() {
-    if (!confirm('Drive 上の全データと通知設定を削除します。元に戻せません。')) return;
+    if (!(await confirmDialog(t('confirmDelAccount'), t('del'), true))) return;
     if (await guarded(() => api.deleteAccount())) {
-      toast('削除しました');
+      toast(t('deleted'));
       await logout();
     }
   },
@@ -468,7 +526,7 @@ function closeOnOutsideClick(dialog) {
   });
 }
 closeOnOutsideClick($('#menu'));
-closeOnOutsideClick($('#content'));
+closeOnOutsideClick($('#confirm'));
 dark.addEventListener('change', applyTheme);
 wide.addEventListener('change', () => render(true));
 
@@ -491,6 +549,12 @@ view.addEventListener('submit', async (e) => {
 
 // カラーピッカーはドラッグ中に連続して発火するため、メニューは再描画せず色だけ反映する
 document.addEventListener('input', (e) => {
+  if (e.target.name === 'bond_level') {
+    // RANK は 1〜BOND_MAX の整数のみ
+    const n = e.target.value.replace(/\D/g, '');
+    e.target.value = n === '' ? '' : String(Math.min(BOND_MAX, Math.max(1, Number(n))));
+    return;
+  }
   if (e.target.dataset.form !== 'accent') return;
   state.accent = e.target.value;
   store.set('accent', state.accent);
@@ -511,13 +575,13 @@ document.addEventListener('change', async (e) => {
     try {
       parsed = JSON.parse(await e.target.files[0].text());
     } catch {
-      return toast('JSON を読み込めません');
+      return toast(t('badJson'));
     } finally {
       e.target.value = '';
     }
     const r = await guarded(() => api.importData(parsed));
     if (r) {
-      toast(`取り込み完了: タップ ${r.taps} / 絆 ${r.relationship} 件 (スキップ ${r.skipped})`);
+      toast(t('imported', { taps: r.taps, bonds: r.relationship, skipped: r.skipped }));
       await loadAll();
     }
   }
@@ -538,8 +602,8 @@ $('#reauth-btn').addEventListener('click', async () => {
     loadAll();
   }
 });
-$('#content-close').addEventListener('click', () => $('#content').close());
 
+applyStatic();
 applyTheme();
 
 setInterval(() => tick(view), 1000);

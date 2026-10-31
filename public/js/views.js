@@ -1,4 +1,5 @@
 // タイマー / カレンダー / 絆 / メニュー の描画。状態は app.js が持ち、ここは HTML を組み立てるだけ。
+import { t, categoryName, getLang, giftName, studentName, LANGS } from './i18n.js';
 import { BOND_MAX, CHARACTERS, RATE_COLOR, SPRITE, charName, favoriteGifts } from '../data/gifts.js';
 import {
   TICKET_COOLDOWN,
@@ -27,6 +28,7 @@ const ICONS = {
   upload: 'M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z',
   chevron: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6-6-6z',
   dropdown: 'M7 10l5 5 5-5z',
+  settings: 'M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z',
 };
 export const icon = (name, size = 20) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
@@ -128,14 +130,14 @@ export function renderCalendar(state) {
       <div class="cal ${calLoading ? 'loading' : ''}">
         ${WEEKDAYS.map((w) => `<em>${w}</em>`).join('')}${cells.join('')}
       </div>
-      <p class="sub note">日付はゲーム日(4:00 JST 区切り)です。</p>
+      <p class="sub note">${t('calNote')}</p>
     </section>
     ${
       selectedDay
         ? `<section class="block"><h2 class="label">${selectedDay} (${dayTaps.length})</h2>
            <ul class="plain">${
              dayTaps.map((t) => `<li>${fmtTime(Date.parse(t.tap_time), tz)} <span class="sub">(${fmtTime(Date.parse(t.tap_time), 'Asia/Tokyo')} JST)</span></li>`).join('') ||
-             '<li class="sub">記録なし</li>'
+             `<li class="sub">${t('noRecord')}</li>`
            }</ul></section>`
         : ''
     }`;
@@ -169,6 +171,13 @@ export const bondRecords = (state, key) =>
 export const defaultBondLevel = (state, key) =>
   Math.min(BOND_MAX, (bondRecords(state, key)[0]?.bond_level ?? 0) + 1);
 
+// 生徒の選択肢。日本語は五十音順(データ順)、他言語は表示名の辞書順に並べる
+function charOptions() {
+  const list = CHARACTERS.map((c) => [c.key, studentName(c.name)]);
+  const lang = getLang();
+  return lang === 'ja' ? list : list.sort((a, b) => a[1].localeCompare(b[1], lang));
+}
+
 export function renderBond(state) {
   const key = state.bondChar;
   const char = CHARACTERS.find((c) => c.key === key);
@@ -181,10 +190,10 @@ export function renderBond(state) {
     .map((g) => {
       const x = (g.sprite % SPRITE.cols) * SPRITE.width;
       const y = Math.floor(g.sprite / SPRITE.cols) * SPRITE.height;
-      return `<li class="gift" title="${esc(g.name)}">
+      return `<li class="gift" title="${esc(giftName(g.name))}">
         <i class="dot" style="background:${RATE_COLOR[g.mult]}"></i>
         <span class="gift-img" style="--x:${x};--y:${y}"></span>
-        <span class="gift-cat">${esc(g.category)}</span></li>`;
+        <span class="gift-cat">${esc(categoryName(g.category))}</span></li>`;
     })
     .join('');
 
@@ -192,7 +201,7 @@ export function renderBond(state) {
     <div>
     <form data-form="bond" class="block">
       <h2 class="label">Student</h2>
-      ${dropdown({ field: 'char', value: key, large: true, options: CHARACTERS.map((c) => [c.key, c.name]) })}
+      ${dropdown({ field: 'char', value: key, large: true, options: charOptions() })}
       <div class="bond-row">
         <label>Rank <input name="bond_level" type="number" inputmode="numeric" min="1" max="${BOND_MAX}" value="${level}" required></label>
         <label>Date <input name="recorded_at" type="date" value="${esc(date)}" required></label>
@@ -202,9 +211,9 @@ export function renderBond(state) {
     <section class="block">
       <h2 class="label">Favorite Gifts</h2>
       <div class="gifts-wrap">
-        <ul class="gifts">${gifts || '<li class="sub">データ未登録</li>'}</ul>
-        <button class="gifts-nav prev" data-act="gifts-scroll" data-dir="-1" aria-label="前へ">${icon('chevron')}</button>
-        <button class="gifts-nav next" data-act="gifts-scroll" data-dir="1" aria-label="次へ">${icon('chevron')}</button>
+        <ul class="gifts">${gifts || `<li class="sub">${t('noData')}</li>`}</ul>
+        <button class="gifts-nav prev" data-act="gifts-scroll" data-dir="-1" aria-label="${t('prev')}">${icon('chevron')}</button>
+        <button class="gifts-nav next" data-act="gifts-scroll" data-dir="1" aria-label="${t('next')}">${icon('chevron')}</button>
       </div>
     </section>
     <section class="block">
@@ -213,9 +222,9 @@ export function renderBond(state) {
         history
           .map(
             (b) => `<li><strong>${b.bond_level}</strong><span class="sep">|</span><span>${esc(b.recorded_at)}</span>
-              <button class="ghost icon sm" data-act="bond-del" data-id="${esc(b.id)}" aria-label="削除">${icon('trash', 16)}</button></li>`,
+              <button class="ghost icon sm" data-act="bond-del" data-id="${esc(b.id)}" aria-label="${t('del')}">${icon('trash', 16)}</button></li>`,
           )
-          .join('') || '<li class="sub">まだ記録がありません</li>'
+          .join('') || `<li class="sub">${t('noHistory')}</li>`
       }</ul>
     </section>
     </div>
@@ -230,15 +239,8 @@ export function renderBond(state) {
 
 // ---- メニュー (右上ハンバーガー) ----
 
-export const DOCS = [
-  ['about', 'About'],
-  ['guide', '使い方ガイド'],
-  ['faq', 'FAQ'],
-  ['terms', '利用規約'],
-  ['privacy', 'プライバシーポリシー'],
-  ['operator', '運営者情報など'],
-];
-export const MODES = [['auto', '自動'], ['light', 'ライト'], ['dark', 'ダーク']];
+export const DOCS = ['about', 'guide', 'faq', 'terms', 'privacy', 'operator'];
+export const MODES = ['auto', 'light', 'dark'];
 export const DEFAULT_ACCENT = '#4355b9';
 
 // タイムゾーンの現在のUTCオフセット(分)と "+09:00" 形式の表記
@@ -266,9 +268,6 @@ export function zoneOptions(zones) {
 export function renderMenu(state) {
   const u = state.user ?? {};
   const name = u.displayName || u.email || '';
-  const zones = Intl.supportedValuesOf?.('timeZone') ?? [];
-  const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const tz = state.profile.timezone;
   return `
     <div class="menu-head">
       <span class="avatar">${esc([...name][0] ?? '')}${
@@ -277,34 +276,57 @@ export function renderMenu(state) {
       <span class="who"><strong>${esc(name)}</strong>${u.displayName ? `<small>${esc(u.email ?? '')}</small>` : ''}</span>
     </div>
     <div class="menu-list">
-      ${DOCS.map(([id, label]) => `<button class="menu-item" data-act="doc" data-doc="${id}">${icon('chevron')}${esc(label)}</button>`).join('')}
-    </div>
-    <hr>
-    <h3 class="menu-title">表示</h3>
-    <div class="seg">
-      ${MODES.map(([id, label]) => `<button data-act="mode" data-mode="${id}" aria-pressed="${state.mode === id}">${label}</button>`).join('')}
-    </div>
-    <label class="accent">アクセントカラー
-      <span class="row">
-        <input type="color" data-form="accent" value="${esc(state.accent)}">
-        <button class="ghost" data-act="accent-reset">リセット</button>
-      </span>
-    </label>
-    <div class="field">タイムゾーン
-      ${dropdown({
-        field: 'tz',
-        value: tz ?? '',
-        options: [['', ['端末の設定', `${deviceZone} · UTC${zoneOffset(deviceZone).text}`]], ...zoneOptions(zones)],
-      })}
+      ${DOCS.map((id) => `<button class="menu-item" data-act="doc" data-doc="${id}">${icon('chevron')}${esc(t('doc' + id[0].toUpperCase() + id.slice(1)))}</button>`).join('')}
     </div>
     <hr>
     <div class="menu-list">
-      <button class="menu-item" data-act="push" ${state.pushSupported ? '' : 'disabled'}>${icon('bell')}通知設定: ${state.pushOn ? 'オン' : 'オフ'}</button>
-      ${state.pushSupported ? '' : '<p class="sub hint">この端末は通知に非対応です (iOS はホーム画面に追加が必要)</p>'}
-      <label class="menu-item">${icon('upload')}旧データの取り込み<input type="file" accept="application/json" data-form="import" hidden></label>
-      <button class="menu-item danger" data-act="delete-account">${icon('trash')}データ削除</button>
-      <button class="menu-item" data-act="logout">${icon('logout')}ログアウト</button>
+      <button class="menu-item" data-act="settings">${icon('settings')}${t('settings')}</button>
     </div>`;
+}
+
+// ---- ドキュメントページ (About など) ----
+
+export const renderDoc = (state) => `<section class="block doc">${state.docHtml ?? ''}</section>`;
+
+// ---- 設定ページ ----
+
+export function renderSettings(state) {
+  const zones = Intl.supportedValuesOf?.('timeZone') ?? [];
+  const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tz = state.profile.timezone;
+  return `
+    <section class="block settings">
+      <h2 class="label">${t('settings')}</h2>
+      <h3 class="menu-title">${t('display')}</h3>
+      <div class="seg">
+        ${MODES.map((id) => `<button data-act="mode" data-mode="${id}" aria-pressed="${state.mode === id}">${t('mode' + id[0].toUpperCase() + id.slice(1))}</button>`).join('')}
+      </div>
+      <label class="accent">${t('accent')}
+        <span class="row">
+          <input type="color" data-form="accent" value="${esc(state.accent)}">
+          <button class="ghost" data-act="accent-reset">${t('reset')}</button>
+        </span>
+      </label>
+      <div class="field">${t('timezone')}
+        ${dropdown({
+          field: 'tz',
+          value: tz ?? '',
+          options: [['', [t('deviceZone'), `${deviceZone} · UTC${zoneOffset(deviceZone).text}`]], ...zoneOptions(zones)],
+        })}
+      </div>
+      <div class="field">${t('language')}
+        ${dropdown({ field: 'lang', value: getLang(), options: LANGS })}
+      </div>
+      <hr>
+      <h3 class="menu-title">${t('notifData')}</h3>
+      <div class="menu-list">
+        <button class="menu-item" data-act="push" ${state.pushSupported ? '' : 'disabled'}>${icon('bell')}${t(state.pushOn ? 'pushOn' : 'pushOff')}</button>
+        ${state.pushSupported ? '' : `<p class="sub hint">${t('pushUnsupported')}</p>`}
+        <label class="menu-item">${icon('upload')}${t('importOld')}<input type="file" accept="application/json" data-form="import" hidden></label>
+        <button class="menu-item danger" data-act="delete-account">${icon('trash')}${t('deleteData')}</button>
+        <button class="menu-item" data-act="logout">${icon('logout')}${t('logout')}</button>
+      </div>
+    </section>`;
 }
 
 export { charName };
