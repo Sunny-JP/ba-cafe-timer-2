@@ -509,3 +509,75 @@ html { overflow-x: clip; }
   transition: opacity .15s ease, transform .15s ease, visibility .15s;
 }
 .dd-list.open { opacity: 1; visibility: visible; pointer-events: auto; transform: none; }
+
+/* ---- スマホ: 絆の入力行がはみ出さないようにする ---- */
+.bond-row { grid-template-columns: 72px minmax(0, 1fr) auto; }
+.bond-row label, .bond-row input { min-width: 0; width: 100%; }
+.bond-row input[type="date"] { appearance: none; -webkit-appearance: none; }
+.record { white-space: nowrap; }
+@media (max-width: 480px) {
+  .bond-row { gap: 10px; }
+  .record { padding: 0 20px; }
+  #view { padding-inline: 16px; }
+  .appbar { padding-inline: 16px; }
+}
+
+/* ---- スマホでも Next Call は横2列 ---- */
+.grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 480px) {
+  .grid2 { gap: 12px; }
+  .grid2 .timer { font-size: clamp(1.25rem, 6vw, 1.75rem); }
+}
+
+/* ---- スマホ: 縦方向を詰める ---- */
+@media (max-width: 600px) {
+  body { font-size: 14px; padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+  .appbar { padding-block: 10px; font-size: 1.125rem; }
+  #view { padding-block: 4px 16px; gap: 0; }
+  .block { gap: 8px; padding: 12px 0; }
+  .big { font-size: clamp(2.25rem, 12vw, 3rem); }
+  .timer { font-size: clamp(1.125rem, 5.5vw, 1.5rem); margin-bottom: 6px; }
+  .slots { gap: 6px; margin: 4px 0 6px; }
+  .slot { aspect-ratio: 8 / 3; font-size: .9375rem; }
+  button.wide { height: 40px; font-size: .9375rem; }
+  .grid2 { gap: 10px; }
+  .dd.lg .dd-btn { font-size: 1.5rem; }
+  .gift { width: 60px; padding: 6px 2px 4px; }
+  .chart, .chart:where(*) { aspect-ratio: 4 / 3; }
+  .history { gap: 4px 20px; }
+  #app > nav button { height: 48px; }
+  #app > nav button::after, #app > nav button[aria-selected="true"]::after { bottom: 4px; }
+  #toast { bottom: calc(64px + env(safe-area-inset-bottom)); }
+}
+
+/* ---- スマホ: 持ったときの誤タップを避けるため左右の余白を広げる ---- */
+@media (max-width: 600px) {
+  #view { padding-inline: 28px; }
+  .appbar { padding-inline: 28px; }
+  #app > nav { padding-inline: 20px; }
+  #toast { left: 28px; right: 28px; }
+}
+
+/* ---- 青いバーの位置を絆画面と揃える。数字はラベルの文字の位置に合わせる ---- */
+.indent { padding-left: 11px; }
+
+/* ---- ハンバーガーボタンを右端寄りに / スマホのメニューを細く ---- */
+.actions { margin-right: -10px; }
+@media (max-width: 600px) {
+  dialog#menu { width: min(72vw, 280px); padding: 20px 12px; }
+}
+
+/* ---- メニューのアクセントカラー: 狭くても改行しない ---- */
+.accent { gap: 8px; white-space: nowrap; }
+.accent .row { flex-wrap: nowrap; gap: 4px; flex: none; }
+.accent .ghost { padding: 0 8px; }
+
+/* ---- 2行ラベル (タイムゾーンなど): 本文 + 小さな補足 ---- */
+.dd-btn span:has(.l1), .dd-list button:has(.l1) { line-height: 1.25; }
+.l1, .l2 { display: block; overflow: hidden; text-overflow: ellipsis; }
+.l2 { margin-top: 1px; font-size: .6875rem; font-weight: 400; color: var(--on-variant); letter-spacing: .02em; }
+.dd-btn:has(.l1) { height: auto; min-height: 44px; padding-block: 6px; text-align: left; }
+.dd-btn:has(.l1) > span { min-width: 0; }
+.dd-list button:has(.l1) { height: auto; min-height: 44px; padding-block: 6px; }
+.dd-list button[aria-selected="true"] .l2 { color: inherit; opacity: .75; }
+.field .dd-list { max-width: 100%; }

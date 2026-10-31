@@ -71,13 +71,13 @@ export function renderTimer(state, now = Date.now()) {
 
   return `
     <section class="block">
-      <h2 class="label indent">Next Tap</h2>
+      <h2 class="label">Next Tap</h2>
       <p class="big indent">${countdown(nextTap)}</p>
       <ul class="slots">${slots}</ul>
       <button class="primary wide" data-act="tap" data-enable-at="${nextTap}">Tap</button>
     </section>
     <section class="block">
-      <h2 class="label indent">Next Call</h2>
+      <h2 class="label">Next Call</h2>
       <div class="grid2">${tickets}</div>
     </section>`;
 }
@@ -144,15 +144,18 @@ export function renderCalendar(state) {
 // ---- 独自ドロップダウン (ネイティブの select は使わない) ----
 
 // options: [[value, label], ...]。選択は data-act="dd-pick" data-field data-value で通知する。
+// ラベルは文字列、または [本文, 補足] (補足は小さい文字で2行目に出す)
+const ddLabel = (l) => (Array.isArray(l) ? `<span class="l1">${esc(l[0])}</span><span class="l2">${esc(l[1])}</span>` : esc(l));
+
 function dropdown({ field, value, options, large = false }) {
   const current = options.find(([v]) => v === value) ?? options[0];
   return `<div class="dd${large ? ' lg' : ''}">
     <button type="button" class="dd-btn" data-act="dd-toggle" aria-haspopup="listbox" aria-expanded="false">
-      <span>${esc(current[1])}</span>${icon('dropdown', large ? 28 : 18)}
+      <span>${ddLabel(current[1])}</span>${icon('dropdown', large ? 28 : 18)}
     </button>
     <ul class="dd-list" role="listbox">
       ${options
-        .map(([v, l]) => `<li><button type="button" role="option" aria-selected="${v === current[0]}" data-act="dd-pick" data-field="${field}" data-value="${esc(v)}">${esc(l)}</button></li>`)
+        .map(([v, l]) => `<li><button type="button" role="option" aria-selected="${v === current[0]}" data-act="dd-pick" data-field="${field}" data-value="${esc(v)}">${ddLabel(l)}</button></li>`)
         .join('')}
     </ul>
   </div>`;
@@ -238,10 +241,33 @@ export const DOCS = [
 export const MODES = [['auto', '自動'], ['light', 'ライト'], ['dark', 'ダーク']];
 export const DEFAULT_ACCENT = '#4355b9';
 
+// タイムゾーンの現在のUTCオフセット(分)と "+09:00" 形式の表記
+export function zoneOffset(zone, at = new Date()) {
+  try {
+    const part = new Intl.DateTimeFormat('en', { timeZone: zone, timeZoneName: 'longOffset' })
+      .formatToParts(at).find((p) => p.type === 'timeZoneName')?.value ?? 'GMT';
+    const m = part.match(/([+-])(\d{2}):(\d{2})/);
+    if (!m) return { min: 0, text: '+00:00' };
+    const min = (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3]));
+    return { min, text: `${m[1]}${m[2]}:${m[3]}` };
+  } catch {
+    return { min: 0, text: '+00:00' };
+  }
+}
+
+// オフセットの小さい順 (同じなら名前順) に並べ、「(UTC+09:00) Asia/Tokyo」の形にする
+export function zoneOptions(zones) {
+  return zones
+    .map((z) => ({ z, ...zoneOffset(z) }))
+    .sort((a, b) => a.min - b.min || a.z.localeCompare(b.z))
+    .map(({ z, text }) => [z, [z, `UTC${text}`]]);
+}
+
 export function renderMenu(state) {
   const u = state.user ?? {};
   const name = u.displayName || u.email || '';
   const zones = Intl.supportedValuesOf?.('timeZone') ?? [];
+  const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const tz = state.profile.timezone;
   return `
     <div class="menu-head">
@@ -268,7 +294,7 @@ export function renderMenu(state) {
       ${dropdown({
         field: 'tz',
         value: tz ?? '',
-        options: [['', `端末の設定 (${Intl.DateTimeFormat().resolvedOptions().timeZone})`], ...zones.map((z) => [z, z])],
+        options: [['', ['端末の設定', `${deviceZone} · UTC${zoneOffset(deviceZone).text}`]], ...zoneOptions(zones)],
       })}
     </div>
     <hr>
