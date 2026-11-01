@@ -64,6 +64,11 @@
       <button id="confirm-ok" class="primary"></button>
     </div>
   </dialog>
+  <dialog id="busy" class="loader" role="status" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    <p id="busy-msg"></p>
+    <progress id="busy-bar" max="3" value="0"></progress>
+  </dialog>
   <div id="toast" role="status" hidden></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>

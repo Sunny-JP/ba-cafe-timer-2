@@ -110,7 +110,7 @@ export function renderCalendar(state) {
     const key = `${month}-${String(d).padStart(2, '0')}`;
     const n = counts[key] ?? 0;
     cells.push(
-      `<button class="day${heatLevel(n) >= 5 ? ' hi' : ''}${key === selectedDay ? ' sel' : ''}" style="--lv:${heatLevel(n)}" data-act="day" data-day="${key}">
+      `<button class="day${heatLevel(n) >= 5 ? ' hi' : ''}${heatLevel(n) >= 7 ? ' top' : ''}${key === selectedDay ? ' sel' : ''}" style="--lv:${heatLevel(n)}" data-act="day" data-day="${key}">
         <span>${d}</span>${n ? `<b>${n}</b>` : ''}</button>`,
     );
   }

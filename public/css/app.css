@@ -53,6 +53,12 @@ strong { font-weight: 500; }
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* 処理中の操作ブロック。showModal() で背面を操作不能にし、::backdrop で暗くする */
+#busy { border: 0; border-radius: 16px; padding: 28px 32px; min-width: 240px; max-width: calc(100vw - 48px); }
+#busy[open] { display: grid; gap: 14px; justify-items: center; text-align: center; }
+#busy::backdrop { background: rgb(0 0 0 / .55); }
+#busy p { margin: 0; }
+#busy progress { width: 100%; height: 6px; accent-color: var(--primary); }
 #view { max-width: 640px; margin: 0 auto; padding: 4px 16px 16px; display: grid; gap: 12px; }
 
 .card { background: var(--container); border-radius: 16px; padding: 16px; }
@@ -483,17 +489,22 @@ html { overflow-x: clip; }
 /* ---- カレンダー: タップ数 1〜8 を GitHub の草のように段階表示。ホバーでは色を変えない ---- */
 .day { --day-bg: color-mix(in srgb, var(--primary) calc(var(--lv, 0) * 12.5%), var(--container)); background: var(--day-bg); }
 .day:hover:not(:disabled) { background: var(--day-bg); }
-.day.hi { color: var(--on-primary); }
+/* 視認性のため、背景の濃さは最大でも約64%に抑え、文字色は全段階で通常の文字色に固定する */
+.day { --day-bg: color-mix(in srgb, var(--primary) calc(var(--lv, 0) * 8%), var(--container)); }
+.day, .day span, .day b { color: var(--on-surface); }
+.day span { font-size: .8125rem; font-weight: 500; }
+.day b { font-size: 1.25rem; font-weight: 700; }
+.day.sel { outline-width: 3px; }
 
 /* ---- メニューのページ本文 (content.html) ---- */
-.doc { font-size: .9375rem; line-height: 1.8; }
+.doc { font-size: .9375rem; line-height: 1.6; }
 .doc h2 { font-size: 1.25rem; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--outline); }
 .doc h3 { margin: 6px 0 0; font-size: 1rem; line-height: 1.5; }
 .doc h3.group { margin-top: 8px; padding-left: 10px; border-left: 3px solid var(--primary); }
 .doc p, .doc ul, .doc dl { margin: 0 0 8px; }
 .doc ul { padding-left: 1.3em; }
-.doc li { margin: 4px 0; }
-.doc dt { margin-top: 18px; font-weight: 500; }
+.doc li { margin: 2px 0; }
+.doc dt { margin-top: 14px; font-weight: 500; }
 .doc dd { margin: 4px 0 0; color: var(--on-variant); font-size: .875rem; }
 .doc a { color: var(--primary); }
 .doc .right { text-align: right; margin-top: 24px; }
@@ -549,7 +560,13 @@ html { overflow-x: clip; }
   .dd.lg .dd-btn { font-size: 1.5rem; }
   .gift { width: 60px; padding: 6px 2px 4px; }
   .chart, .chart:where(*) { aspect-ratio: 4 / 3; }
-  .history { gap: 4px 20px; }
+  .history { gap: 0 20px; }
+  .history li { min-height: 28px; }
+  .history button.icon { height: 28px; width: 32px; }
+  /* 絆画面: グループ間の余白を詰める */
+  .cols .block { gap: 6px; padding: 8px 0; }
+  .cols .block + .block { margin-top: 0; }
+  .cols .gifts { padding-bottom: 0; }
   #app > nav button { height: 48px; }
   #app > nav button::after, #app > nav button[aria-selected="true"]::after { bottom: 4px; }
   #toast { bottom: calc(64px + env(safe-area-inset-bottom)); }

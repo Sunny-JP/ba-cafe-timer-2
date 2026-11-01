@@ -150,7 +150,16 @@ const routes = {
 
   'DELETE /api/account': async ({ drive, env, uid }) => {
     await drive.removeAll();
-    if (env.FIREBASE_SERVICE_ACCOUNT) await deleteUserData(env, uid);
+    // Drive のデータは消去済み。通知情報の掃除に失敗しても、ユーザーにはエラーを返さない。
+    if (env.FIREBASE_SERVICE_ACCOUNT) {
+      try {
+        await deleteUserData(env, uid);
+      } catch (e) {
+        // 秘密情報を含み得るため、自前のメッセージ(firestore 403 など)だけを出す
+        const safe = /^(firestore \d+|service account auth failed)$/.test(e?.message) ? e.message : '';
+        console.error('deleteUserData failed', e?.name, safe);
+      }
+    }
     return { ok: true };
   },
 
