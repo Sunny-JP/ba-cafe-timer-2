@@ -72,7 +72,7 @@ cafetimer/
 │  │  ├─ auth.js                # Google ログイン・トークン取得
 │  │  ├─ push.js                # FCM 登録
 │  │  └─ time.js                # JST 計算・表示・UUID v7 (Worker と共用)
-│  ├─ data/gifts.js             # bondData.ts (絆EXP表・贈物・キャラ) の移植
+│  ├─ data/gifts.js             # 定数と、/api/gamedata で取得したデータの保持 (データ本体は src/data/gamedata.js)
 │  └─ img/                      # アイコン・ogp・gifts.png
 ├─ src/
 │  ├─ worker.js                 # ルーティング・cron

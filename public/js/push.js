@@ -1,5 +1,5 @@
 // FCM (Web Push) の端末登録。
-import { getMessaging, getToken, deleteToken } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging.js";
+import { getMessaging, getToken, deleteToken, onMessage } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging.js";
 import { app } from "./auth.js";
 import { api } from "./api.js";
 import { t } from "./i18n.js";
@@ -15,11 +15,24 @@ async function currentToken() {
   return getToken(getMessaging(app), { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
 }
 
+// 画面を開いている(フォーカス中の)タブには、SDK は通知を出さずにページへ渡すだけなので、ここで表示する
+let listening = false;
+export function showForegroundNotifications() {
+  if (listening || !pushEnabled()) return;
+  listening = true;
+  onMessage(getMessaging(app), async (payload) => {
+    const { title = '', body = '', icon } = payload.notification ?? {};
+    const registration = await navigator.serviceWorker.ready;
+    registration.showNotification(title, { body, icon });
+  });
+}
+
 export async function enablePush() {
   if ((await Notification.requestPermission()) !== "granted") throw new Error(t("pushDenied"));
   const token = await currentToken();
   await api.registerDevice(token);
   localStorage.setItem("ct.push", "1");
+  showForegroundNotifications();
 }
 
 export async function disablePush() {

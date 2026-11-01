@@ -3,3 +3,6 @@
 node_modules/
 
 service-account.json
+
+# 運用者向けの内部資料 (管理機能・秘匿情報の扱いを含む)
+ADMIN_README.md

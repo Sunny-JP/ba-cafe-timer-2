@@ -55,7 +55,7 @@ async function serviceToken(env) {
     '.' +
     jsonB64url({
       iss: sa.client_email,
-      scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging',
+      scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging https://www.googleapis.com/auth/identitytoolkit',
       aud: 'https://oauth2.googleapis.com/token',
       iat: now,
       exp: now + 3600,
@@ -98,8 +98,91 @@ export async function getDevices(env, uid) {
 }
 
 export async function setDevices(env, uid, tokens) {
+  if (!tokens.length) {
+    await fs(env, `/devices/${uid}`, { method: 'DELETE' });
+    return;
+  }
   const values = tokens.map((stringValue) => ({ stringValue }));
   await fs(env, `/devices/${uid}`, { method: 'PATCH', body: JSON.stringify({ fields: { tokens: { arrayValue: { values } } } }) });
+}
+
+// ---- 管理画面用: カタログ (追加キャラ・贈物) と集計 ----
+
+let catalogCache = { value: null, exp: 0 };
+const EMPTY_CATALOG = { characters: [] };
+
+export async function getCatalog(env) {
+  if (catalogCache.value && catalogCache.exp > Date.now()) return catalogCache.value;
+  const res = await fs(env, '/config/catalog');
+  let value = EMPTY_CATALOG;
+  if (res.status !== 404) {
+    try {
+      value = JSON.parse((await res.json()).fields?.json?.stringValue ?? 'null') ?? EMPTY_CATALOG;
+    } catch {
+      /* 壊れていたら空として扱う */
+    }
+  }
+  catalogCache = { value, exp: Date.now() + 30000 };
+  return value;
+}
+
+export async function setCatalog(env, catalog) {
+  await fs(env, '/config/catalog', { method: 'PATCH', body: JSON.stringify({ fields: { json: { stringValue: JSON.stringify(catalog) } } }) });
+  catalogCache = { value: catalog, exp: Date.now() + 30000 };
+}
+
+// 統計カウンタ (stats/counters)。個人を特定できる情報は持たず、数だけを加減算する。
+export async function addCounts(env, deltas) {
+  const entries = Object.entries(deltas).filter(([, n]) => n);
+  if (!entries.length) return;
+  const base = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+  await fs(env, ':commit', {
+    method: 'POST',
+    body: JSON.stringify({
+      writes: [
+        {
+          transform: {
+            document: `${base}/stats/counters`,
+            fieldTransforms: entries.map(([k, n]) => ({ fieldPath: `\`${k}\``, increment: { integerValue: String(n) } })),
+          },
+        },
+      ],
+    }),
+  });
+}
+
+export async function getCounts(env) {
+  const res = await fs(env, '/stats/counters');
+  if (res.status === 404) return {};
+  const fields = (await res.json()).fields ?? {};
+  return Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, Number(v.integerValue ?? 0)]));
+}
+
+export async function countDevices(env) {
+  const res = await fs(env, ':runAggregationQuery', {
+    method: 'POST',
+    body: JSON.stringify({
+      structuredAggregationQuery: {
+        structuredQuery: { from: [{ collectionId: 'devices' }] },
+        aggregations: [{ count: {}, alias: 'n' }],
+      },
+    }),
+  });
+  return Number((await res.json())[0]?.result?.aggregateFields?.n?.integerValue ?? 0);
+}
+
+// Firebase Auth の登録ユーザー数。権限が足りないなどで取れなければ null
+export async function countUsers(env) {
+  try {
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await serviceToken(env)}` },
+      body: JSON.stringify({ returnUserInfo: false }),
+    });
+    return res.ok ? Number((await res.json()).recordsCount ?? 0) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function addPending(env, uid, sendAtMs) {
@@ -143,8 +226,9 @@ const MESSAGES = [
   { title: 'お茶の時間', body: 'そろそろカフェ巡りの時間です。' },
 ];
 
-async function sendFcm(env, token) {
-  const m = MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
+const randomMessage = () => MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
+
+async function sendFcm(env, token, m = randomMessage()) {
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await serviceToken(env)}` },
@@ -152,7 +236,25 @@ async function sendFcm(env, token) {
       message: { token, webpush: { notification: { ...m, icon: '/img/icon.svg' }, fcm_options: { link: '/' } } },
     }),
   });
-  return res.ok ? 'ok' : res.status === 404 || res.status === 400 ? 'gone' : 'error';
+  if (res.ok) return { result: 'ok' };
+  // 失敗の理由 (UNREGISTERED / SENDER_ID_MISMATCH / PERMISSION_DENIED など)。トークンや本文は含まれない
+  const code = (await res.json().catch(() => null))?.error?.status ?? '';
+  return { result: res.status === 404 || res.status === 400 ? 'gone' : 'error', status: res.status, code };
+}
+
+// 管理画面のテスト通知。本人の端末にだけ送る
+export async function sendTestNotification(env, uid) {
+  const tokens = await getDevices(env, uid);
+  const result = { devices: tokens.length, ok: 0, gone: 0, error: 0, failures: [] };
+  const alive = [];
+  for (const t of tokens) {
+    const r = await sendFcm(env, t, { title: 'テスト通知', body: '管理画面から送信されました。' });
+    result[r.result]++;
+    if (r.result !== 'ok') result.failures.push(`${r.status} ${r.code}`.trim());
+    if (r.result !== 'gone') alive.push(t);
+  }
+  if (alive.length !== tokens.length) await setDevices(env, uid, alive);
+  return result;
 }
 
 export async function sendDueNotifications(env) {
@@ -166,7 +268,11 @@ export async function sendDueNotifications(env) {
   for (const d of due) {
     const tokens = await getDevices(env, d.uid);
     const alive = [];
-    for (const t of tokens) if ((await sendFcm(env, t)) !== 'gone') alive.push(t);
+    for (const t of tokens) {
+      const r = await sendFcm(env, t);
+      if (r.result !== 'ok') console.error('fcm send failed', r.status, r.code);
+      if (r.result !== 'gone') alive.push(t);
+    }
     if (alive.length !== tokens.length) await setDevices(env, d.uid, alive);
     await removeDoc(env, d.name);
   }

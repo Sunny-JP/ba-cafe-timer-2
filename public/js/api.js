@@ -31,6 +31,12 @@ export const api = {
   deleteBond: (id) => request('DELETE', '/api/relationship', { id }),
   registerDevice: (token) => request('PUT', '/api/devices', { token }, { drive: false }),
   unregisterDevice: (token) => request('DELETE', '/api/devices', { token }, { drive: false }),
+  gamedata: () => request('GET', '/api/gamedata', undefined, { drive: false }),
+  catalog: () => request('GET', '/api/catalog', undefined, { drive: false }),
+  adminMe: () => request('GET', '/api/admin/me', undefined, { drive: false }),
+  adminStats: () => request('GET', '/api/admin/stats', undefined, { drive: false }),
+  adminTestPush: () => request('POST', '/api/admin/test-push', undefined, { drive: false }),
+  adminSaveCatalog: (catalog) => request('PUT', '/api/admin/catalog', catalog, { drive: false }),
   deleteAccount: () => request('DELETE', '/api/account'),
   importData: (data) => request('POST', '/api/import', data),
 };

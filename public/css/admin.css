@@ -1,0 +1,48 @@
+/* 管理ページ共通。配色は app.css の変数を使う (文字は --on-surface / --on-variant、--outline は枠線用) */
+body { overflow: auto; height: auto; }
+/* app.css は全体を選択不可にしているが、管理ページは文字をコピーできるようにする */
+body, #admin * { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+.pick, .pick *, button { -webkit-user-select: none; user-select: none; }
+#admin { max-width: 960px; margin: 0 auto; padding: 16px 16px 64px; display: grid; gap: 24px; align-content: start; }
+#admin h1 { margin: 0; font-size: 1.25rem; }
+#admin h2 { margin: 0 0 8px; font-size: 1rem; }
+#admin p, #admin .note { text-align: left; color: var(--on-variant); margin: 0; }
+#admin a { color: var(--primary); }
+#admin input, #admin select { color: var(--on-surface); }
+#content { display: grid; gap: 12px; align-content: start; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.row label { display: grid; gap: 2px; font-size: .75rem; color: var(--on-variant); }
+.row input, .row select { min-width: 0; }
+.adminnav { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--outline); }
+.adminnav a { padding: 8px 12px; border-bottom: 2px solid transparent; text-decoration: none; color: var(--on-variant) !important; }
+.adminnav a[aria-current] { border-color: var(--primary); color: var(--on-surface) !important; font-weight: 500; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.card { padding: 12px; background: var(--container); border-radius: 12px; }
+.card b { display: block; font-size: 1.5rem; }
+.card span { font-size: .75rem; color: var(--on-variant); }
+a.card { text-decoration: none; color: var(--on-surface) !important; }
+a.card b { font-size: 1rem; }
+.tbl { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.tbl th, .tbl td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--outline); }
+.tbl th:first-child, .tbl td:first-child { text-align: left; }
+.scroll { max-height: 320px; overflow: auto; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.list li { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 6px 8px; background: var(--container); border-radius: 8px; font-size: .875rem; }
+.note { font-size: .75rem; }
+.result { white-space: pre-wrap; font-size: .875rem; }
+.err { color: var(--error) !important; }
+.picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 4px; max-height: 560px; overflow: auto; padding: 2px; }
+.pick { position: relative; display: grid; justify-items: center; gap: 0; padding: 4px 2px 3px; height: auto; border: 2px solid var(--outline); border-radius: 8px; background: var(--container); color: var(--on-surface); font-size: .6875rem; }
+.pick .gift-img { --s: .32; }
+.pick .eff { min-height: 1.2em; font-size: .625rem; font-weight: 700; }
+.pick[data-rate] { border-color: var(--rate); }
+.pick .dot { position: absolute; top: 3px; left: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--rate); display: none; }
+.pick[data-rate] .dot { display: block; }
+.charlist li { display: grid; gap: 6px; }
+.charhead { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.charname { display: grid; gap: 2px; min-width: 0; }
+.charname .note { overflow-wrap: anywhere; }
+.minis { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick.mini { width: 52px; padding: 2px 1px; }
+.pick.mini .gift-img { --s: .3; }
+.badge { padding: 1px 6px; border-radius: 8px; background: var(--primary-container); color: var(--on-primary-container); font-size: .625rem; }

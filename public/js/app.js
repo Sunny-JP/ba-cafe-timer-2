@@ -2,8 +2,9 @@
 import { ReauthRequired, login, logout, onUser } from './auth.js';
 import { api } from './api.js';
 import { applyStatic, getLang, setLang, t } from './i18n.js';
-import { disablePush, enablePush, pushEnabled, pushSupported } from './push.js';
+import { disablePush, enablePush, pushEnabled, pushSupported, showForegroundNotifications } from './push.js';
 import { BOND_EXP, BOND_MAX, CHARACTERS } from '../data/gifts.js';
+import { ensureGameData } from './gamedata.js';
 import { logicalMonth, nextMonth, prevMonth, uuidv7 } from './time.js';
 import {
   DEFAULT_ACCENT,
@@ -100,7 +101,7 @@ const state = {
   profile: { ticket1_time: null, ticket2_time: null, timezone: null },
   lastTap: null,
   monthTaps: [], // 当月のタップ (タイマーの枠表示用)
-  bondChar: store.get('char', CHARACTERS[0].key, CHARACTERS.map((c) => c.key)),
+  bondChar: null, // ゲームデータの読み込み後に決める (loadAll)
   bondLevel: null,
   bondDate: null,
   relationship: [],
@@ -445,6 +446,9 @@ async function guarded(fn) {
 }
 
 async function loadAll() {
+  // 絆EXP表・キャラ・贈物は public/ に置かず、ログイン後にサーバーから取得する (描画の前に必要)
+  if (!(await guarded(async () => (await ensureGameData(), true)))) return;
+  state.bondChar ??= store.get('char', CHARACTERS[0].key, CHARACTERS.map((c) => c.key));
   const data = await guarded(() => api.bootstrap(logicalMonth(Date.now())));
   if (!data) return;
   Object.assign(state, {
@@ -732,6 +736,7 @@ onUser((user) => {
   state.user = user;
   if (!user) return show('login');
   show('app');
+  showForegroundNotifications();
   loadAll();
 });
 

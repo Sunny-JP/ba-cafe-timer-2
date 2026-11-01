@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>管理 | Cafe Timer</title>
+  <script>
+    try {
+      const r = document.documentElement, m = localStorage.getItem('ct.mode'), c = localStorage.getItem('ct.accent');
+      if (m === 'light' || m === 'dark') r.dataset.mode = m;
+      if (c && /^#[0-9a-f]{6}$/i.test(c)) r.style.setProperty('--accent', c);
+    } catch {}
+  </script>
+  <link rel="icon" href="/img/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+  <main id="login" class="center" hidden>
+    <h1>Cafe Timer 管理</h1>
+    <button id="login-btn" class="primary">Google でログイン</button>
+  </main>
+
+  <div id="admin" hidden>
+    <div id="shell"></div>
+    <div id="content" hidden>
+      <div class="cards">
+        <a class="card" href="/admin/push"><b>通知</b><span>テスト通知を送る</span></a>
+        <a class="card" href="/admin/stats"><b>統計</b><span>ユーザー数・タップ数・絆</span></a>
+        <a class="card" href="/admin/characters"><b>キャラクター追加</b><span>キャラと好きな贈り物</span></a>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" role="status" hidden></div>
+  <script type="module" src="/js/admin/index.js"></script>
+</body>
+</html>
