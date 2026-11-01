@@ -24,7 +24,10 @@
   <script src="https://accounts.google.com/gsi/client" async></script>
 </head>
 <body>
-  <p id="loading" class="center" data-i18n="loading"></p>
+  <div id="loading" class="center loader" role="status">
+    <span class="spinner" aria-hidden="true"></span>
+    <p data-i18n="loading"></p>
+  </div>
 
   <main id="login" class="center" hidden>
     <h1>Cafe Timer</h1>
