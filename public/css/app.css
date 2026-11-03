@@ -616,3 +616,13 @@ dialog#confirm { width: min(88vw, 360px); margin: auto; padding: 24px; }
 /* ---- ヘッダーのタイトル (タイマーへ戻る) ---- */
 button.home { height: auto; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 button.home:hover:not(:disabled) { background: transparent; }
+
+/* ---- カレンダー: 文字を端から離す (PC/スマホ共通) ---- */
+.day { padding: 10px 12px; }
+.day span { font-size: .75rem; }
+.day b { font-size: 1.0625rem; }
+@media (max-width: 600px) {
+  .day { padding: 9px 11px 8px; }
+  .day span { font-size: .6875rem; }
+  .day b { font-size: 1rem; }
+}
