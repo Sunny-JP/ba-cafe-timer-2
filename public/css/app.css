@@ -230,7 +230,7 @@ button.primary:disabled { background: color-mix(in srgb, var(--on-surface) 12%, 
 .gift img, .gift .ph { width: 48px; height: 48px; border-radius: 12px; object-fit: contain; }
 .gift .ph { display: grid; place-items: center; background: var(--container); font-size: 1.25rem; color: var(--on-variant); }
 .dot { position: absolute; top: 0; left: calc(50% - 30px); width: 10px; height: 10px; border-radius: 50%; }
-.history { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(3, auto); gap: 4px 24px; }
+.history { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, auto); gap: 4px 24px; }
 .history li { display: flex; align-items: center; gap: 8px; }
 .history .sep { color: var(--outline); }
 .chart { position: relative; height: 260px; }
@@ -638,4 +638,18 @@ button.home:hover:not(:disabled) { background: transparent; }
   .history li { gap: 4px; font-size: .8125rem; white-space: nowrap; }
   .history button.icon { width: 28px; }
   .cal-title { font-size: 1.5rem; }
+}
+
+/* ---- 贈物ボックス: さらに小さく ---- */
+.gift { width: 56px; padding: 6px 3px 4px; }
+.gift-img { --s: .36; }
+.gift-cat { font-size: .625rem; }
+.gift .dot { top: 6px; left: 6px; width: 7px; height: 7px; }
+@media (max-width: 600px) {
+  .gift { width: 52px; padding: 5px 2px 4px; }
+}
+
+/* ---- 縦並びのとき、History Log と Progress Graph の間にも区切り線 (別の div にあるため + で届かない) ---- */
+@media not all and (min-width: 900px) and (orientation: landscape) {
+  .cols > div + div > .block { border-top: 1px solid color-mix(in srgb, var(--outline) 60%, transparent); }
 }

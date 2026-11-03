@@ -184,7 +184,7 @@ export function renderBond(state) {
   const level = state.bondLevel ?? defaultBondLevel(state, key);
   const date =
     state.bondDate ?? fmt(Date.now(), { year: 'numeric', month: '2-digit', day: '2-digit' }, state.profile.timezone).replace(/\//g, '-');
-  const history = bondRecords(state, key).slice(0, 6);
+  const history = bondRecords(state, key).slice(0, 4);
 
   const gifts = favoriteGifts(char)
     .map((g) => {
