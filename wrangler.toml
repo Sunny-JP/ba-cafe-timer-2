@@ -12,3 +12,8 @@ crons = ["* * * * *"]
 [vars]
 FIREBASE_PROJECT_ID = "ba-cafe-timer-2"
 
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+
