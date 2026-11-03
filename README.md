@@ -128,6 +128,12 @@ doc/                        設計書・仕様書
 3. サービスアカウントの JSON を登録します。
    - 本番: `npx wrangler secret put FIREBASE_SERVICE_ACCOUNT`
    - ローカル: `.dev.vars` に `FIREBASE_SERVICE_ACCOUNT='<JSON を 1 行にしたもの>'`(値はシングルクォートで囲みます)
+4. Drive の認証を維持するための秘密情報を登録します(リフレッシュトークンをサーバーで暗号化して保管します)。
+   - `GOOGLE_CLIENT_SECRET`: Google Cloud の OAuth ウェブクライアントのシークレット
+   - `TOKEN_ENC_KEY`: 暗号鍵。`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` で作ります
+   - 本番: `npx wrangler secret put GOOGLE_CLIENT_SECRET` / `npx wrangler secret put TOKEN_ENC_KEY`
+   - ローカル: `.dev.vars` に同じ名前で追記します
+   - OAuth 同意画面は「本番」に公開してください(「テスト」のままだとリフレッシュトークンが 7 日で失効します)
 
 ## 実行
 

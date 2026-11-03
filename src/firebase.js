@@ -106,6 +106,22 @@ export async function setDevices(env, uid, tokens) {
   await fs(env, `/devices/${uid}`, { method: 'PATCH', body: JSON.stringify({ fields: { tokens: { arrayValue: { values } } } }) });
 }
 
+// ---- Drive のリフレッシュトークン (暗号化済みの文字列だけを保存する) ----
+
+export async function getDriveAuth(env, uid) {
+  const res = await fs(env, `/driveAuth/${uid}`);
+  if (res.status === 404) return null;
+  return (await res.json()).fields?.enc?.stringValue ?? null;
+}
+
+export async function setDriveAuth(env, uid, enc) {
+  await fs(env, `/driveAuth/${uid}`, { method: 'PATCH', body: JSON.stringify({ fields: { enc: { stringValue: enc } } }) });
+}
+
+export async function deleteDriveAuth(env, uid) {
+  await fs(env, `/driveAuth/${uid}`, { method: 'DELETE' });
+}
+
 // ---- 管理画面用: カタログ (追加キャラ・贈物) と集計 ----
 
 let catalogCache = { value: null, exp: 0 };
@@ -212,6 +228,7 @@ async function removeDoc(env, name) {
 
 export async function deleteUserData(env, uid) {
   await fs(env, `/devices/${uid}`, { method: 'DELETE' });
+  await deleteDriveAuth(env, uid);
   const mine = await queryPending(env, {
     fieldFilter: { field: { fieldPath: 'uid' }, op: 'EQUAL', value: { stringValue: uid } },
   });

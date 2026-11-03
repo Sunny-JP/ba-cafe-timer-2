@@ -1,5 +1,5 @@
 // /api/* 呼び出しのみ。Firestore / Drive には直接触れない。
-import { getDriveToken, getIdToken, ReauthRequired } from './auth.js';
+import { getIdToken, ReauthRequired } from './auth.js';
 
 export class ApiError extends Error {
   constructor(status, message) {
@@ -10,7 +10,6 @@ export class ApiError extends Error {
 
 async function request(method, path, body, { drive = true } = {}, retry = true) {
   const headers = { Authorization: `Bearer ${await getIdToken()}` };
-  if (drive) headers['X-Drive-Token'] = await getDriveToken(!retry);
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
@@ -25,7 +24,7 @@ async function request(method, path, body, { drive = true } = {}, retry = true) 
 export const api = {
   bootstrap: (month) => request('GET', `/api/bootstrap?month=${month}`),
   taps: (month) => request('GET', `/api/taps?month=${month}`),
-  tap: () => request('POST', '/api/taps'),
+  tap: (queued) => request('POST', '/api/taps', queued),
   saveProfile: (patch) => request('PUT', '/api/profile', patch),
   addBond: (bond) => request('POST', '/api/relationship', bond),
   deleteBond: (id) => request('DELETE', '/api/relationship', { id }),
@@ -37,6 +36,7 @@ export const api = {
   adminStats: () => request('GET', '/api/admin/stats', undefined, { drive: false }),
   adminTestPush: () => request('POST', '/api/admin/test-push', undefined, { drive: false }),
   adminSaveCatalog: (catalog) => request('PUT', '/api/admin/catalog', catalog, { drive: false }),
+  linkDrive: (code) => request('POST', '/api/auth/drive', { code }, { drive: false }),
   deleteAccount: () => request('DELETE', '/api/account'),
   importData: (data) => request('POST', '/api/import', data),
 };

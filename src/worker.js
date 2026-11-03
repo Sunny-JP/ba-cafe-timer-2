@@ -1,6 +1,7 @@
 // ルーティングと cron。静的ファイルは Static Assets が配信し、/api/* だけここに来る。
 
 import { Drive, DriveError } from './drive.js';
+import { forgetAccessToken, getAccessToken, linkDrive, unlinkDrive } from './driveauth.js';
 import {
   addCounts,
   addPending,
@@ -168,15 +169,27 @@ const routes = {
     return { month, taps: await readTaps(drive, month) };
   },
 
-  'POST /api/taps': async ({ drive, env, uid }) => {
-    const now = Date.now();
+  'POST /api/taps': async ({ drive, env, uid, body }) => {
+    // 再認証待ちで端末に溜めていたタップは、押した時刻と ID を引き継いで保存する(7日以内・未来でないものだけ)
+    const queued = typeof body?.id === 'string' && typeof body?.tap_time === 'string' && Number.isFinite(Date.parse(body.tap_time));
+    const at = queued ? Date.parse(body.tap_time) : NaN;
+    if (queued && (at > Date.now() + 60000 || at < Date.now() - 7 * 864e5 || body.id.length > 64)) {
+      throw new HttpError(400, 'tap_time が不正です。');
+    }
+    const now = queued ? at : Date.now();
     const month = logicalMonth(now);
     const taps = await readTaps(drive, month);
-    const last = await lastTap(drive, month, taps);
-    if (last && now - Date.parse(last.tap_time) < DUPLICATE_WINDOW) throw new HttpError(429, '直前に記録済みです。');
-    const tap = { id: uuidv7(now), tap_time: new Date(now).toISOString() };
-    await drive.write(tapsFile(month), { taps: [...taps, tap] });
+    if (queued) {
+      const dup = taps.find((t) => t.id === body.id);
+      if (dup) return { tap: dup, scheduled: false }; // 再送されても二重に記録しない
+    } else {
+      const last = await lastTap(drive, month, taps);
+      if (last && now - Date.parse(last.tap_time) < DUPLICATE_WINDOW) throw new HttpError(429, '直前に記録済みです。');
+    }
+    const tap = { id: queued ? body.id : uuidv7(now), tap_time: new Date(now).toISOString() };
+    await drive.write(tapsFile(month), { taps: [...taps, tap].sort((a, b) => (a.tap_time < b.tap_time ? -1 : a.tap_time > b.tap_time ? 1 : 0)) });
     await bumpStats(env, Object.fromEntries(tapKeys(now).map((k) => [k, 1])));
+    if (queued) return { tap, scheduled: false };
 
     // 通知の失敗でタップの記録は失敗させない
     let scheduled = false;
@@ -306,11 +319,18 @@ const routes = {
     return catalog;
   },
 
+  // ブラウザで得た認可コードを渡すと、サーバーがリフレッシュトークンを保管する(以後はトークンの受け渡し不要)
+  'POST /api/auth/drive': async ({ env, uid, body }) => {
+    if (!(await linkDrive(env, uid, body?.code))) throw new HttpError(400, 'Drive の連携に失敗しました。');
+    return { ok: true };
+  },
+
   'DELETE /api/account': async ({ drive, env, uid }) => {
     await drive.removeAll();
     // Drive のデータは消去済み。通知情報の掃除に失敗しても、ユーザーにはエラーを返さない。
     if (env.FIREBASE_SERVICE_ACCOUNT) {
       try {
+        await unlinkDrive(env, uid);
         await deleteUserData(env, uid);
       } catch (e) {
         // 秘密情報を含み得るため、自前のメッセージ(firestore 403 など)だけを出す
@@ -391,7 +411,7 @@ const routes = {
 };
 
 // Drive を使わないルート
-const NO_DRIVE = new Set(['PUT /api/devices', 'DELETE /api/devices', 'GET /api/catalog', 'GET /api/gamedata']);
+const NO_DRIVE = new Set(['PUT /api/devices', 'DELETE /api/devices', 'POST /api/auth/drive', 'GET /api/catalog', 'GET /api/gamedata']);
 
 async function handle(request, env) {
   const url = new URL(request.url);
@@ -407,7 +427,7 @@ async function handle(request, env) {
 
   let drive = null;
   if (!NO_DRIVE.has(key) && !isAdminRoute(key)) {
-    const driveToken = request.headers.get('X-Drive-Token');
+    const driveToken = await getAccessToken(env, uid);
     if (!driveToken) throw new HttpError(401, 'Drive の認証が必要です。', 'drive_token');
     drive = new Drive(driveToken);
   }
@@ -424,6 +444,7 @@ async function handle(request, env) {
     return json(await route({ request, env, url, uid, drive, body }));
   } catch (e) {
     if (e instanceof DriveError && (e.status === 401 || e.status === 403)) {
+      forgetAccessToken(uid); // 失効していたら、次の呼び出しで取り直す
       throw new HttpError(401, 'Drive の認証が失効しました。', 'drive_token');
     }
     throw e;

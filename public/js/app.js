@@ -1,6 +1,6 @@
 // 起動・タブ切替・状態管理。
-import { ReauthRequired, login, logout, onUser } from "./auth.js";
-import { api } from "./api.js";
+import { ReauthRequired, login, logout, onUser, requestDriveCode } from "./auth.js";
+import { ApiError, api } from "./api.js";
 import { applyStatic, getLang, setLang, t } from "./i18n.js";
 import { disablePush, enablePush, pushEnabled, pushSupported, showForegroundNotifications } from "./push.js";
 import { BOND_EXP, BOND_MAX, CHARACTERS } from "../data/gifts.js";
@@ -475,6 +475,30 @@ async function saveProfile(patch) {
   render();
 }
 
+// 再認証待ちで送れなかったタップ(押した時刻つき)。連携し直したあとに送る
+const loadPendingTaps = () => {
+  try {
+    const list = JSON.parse(store.get("pendingTaps", "[]"));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+};
+const savePendingTaps = (list) => store.set("pendingTaps", JSON.stringify(list));
+async function flushPendingTaps() {
+  let list = loadPendingTaps();
+  while (list.length) {
+    try {
+      await api.tap(list[0]);
+    } catch (e) {
+      // 通信・認証の問題なら残して次回へ。内容が不正(期限切れなど)なものは諦めて捨てる
+      if (e instanceof ReauthRequired || !(e instanceof ApiError) || e.status >= 500 || e.status === 429) break;
+    }
+    list = list.slice(1);
+    savePendingTaps(list);
+  }
+}
+
 const actions = {
   async tap() {
     const prev = { lastTap: state.lastTap, monthTaps: state.monthTaps, calTaps: state.calTaps };
@@ -484,7 +508,20 @@ const actions = {
     state.monthTaps = [...state.monthTaps, temp];
     if (onCurrent) state.calTaps = state.monthTaps;
     render();
-    const data = await guarded(() => api.tap());
+    let data;
+    try {
+      data = await api.tap();
+    } catch (e) {
+      if (e instanceof ReauthRequired) {
+        // 再認証が必要でもタップは失わない: 端末に保存し、連携し直したあとに送る
+        savePendingTaps([...loadPendingTaps(), temp]);
+        $("#reauth").hidden = false;
+        toast(t("tapQueued"));
+        render();
+        return;
+      }
+      toast(e.message);
+    }
     if (data) {
       state.lastTap = data.tap;
       state.monthTaps = state.monthTaps.map((t) => (t === temp ? data.tap : t));
@@ -714,8 +751,9 @@ document.querySelector("nav").addEventListener("click", (e) => {
 
 $("#login-btn").addEventListener("click", () => guarded(login));
 $("#reauth-btn").addEventListener("click", async () => {
-  if (await guarded(login)) {
+  if (await guarded(async () => api.linkDrive(await requestDriveCode()))) {
     $("#reauth").hidden = true;
+    await flushPendingTaps();
     loadAll();
   }
 });
@@ -730,7 +768,7 @@ onUser((user) => {
   if (!user) return show("login");
   show("app");
   showForegroundNotifications();
-  loadAll();
+  flushPendingTaps().then(loadAll);
 });
 
 if ("serviceWorker" in navigator && !pushEnabled()) {

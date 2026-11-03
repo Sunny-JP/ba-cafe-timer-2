@@ -12,50 +12,25 @@ export const firebaseConfig = {
   appId: "1:628000422074:web:5ab8993694118bda45ea83",
   measurementId: "G-9NNR3Y3H10",
 };
-// Google Cloud の OAuth ウェブクライアント ID (無音更新用)
+// Google Cloud の OAuth ウェブクライアント ID (Drive 連携の認可コード取得用)
 const GOOGLE_CLIENT_ID = "628000422074-hrfs7ptufkgvcbd0p2cuu1qdlb5sd52u.apps.googleusercontent.com";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
-const STORE_KEY = "ct.drive";
 
 export const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
 export class ReauthRequired extends Error {}
 
-const loadDrive = () => {
-  try {
-    return JSON.parse(localStorage.getItem(STORE_KEY)) ?? null;
-  } catch {
-    return null;
-  }
-};
-const saveDrive = (token, expiresIn = 3500) => {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify({ token, exp: Date.now() + expiresIn * 1000 }));
-  } catch {
-    /* 保存できなくても動作する */
-  }
-};
-
 export function onUser(callback) {
   return onAuthStateChanged(auth, callback);
 }
 
 export async function login() {
-  const provider = new GoogleAuthProvider();
-  provider.addScope(DRIVE_SCOPE);
-  const result = await signInWithPopup(auth, provider);
-  const cred = GoogleAuthProvider.credentialFromResult(result);
-  if (cred?.accessToken) saveDrive(cred.accessToken);
+  const result = await signInWithPopup(auth, new GoogleAuthProvider());
   return result.user;
 }
 
 export async function logout() {
-  try {
-    localStorage.removeItem(STORE_KEY);
-  } catch {
-    /* noop */
-  }
   await signOut(auth);
 }
 
@@ -64,55 +39,22 @@ export async function getIdToken() {
   return auth.currentUser.getIdToken();
 }
 
-// Google Identity Services による無音更新。同時に複数走らないよう 1 本にまとめる
-let refreshing = null;
-function silentRefresh() {
-  refreshing ??= requestToken().finally(() => (refreshing = null));
-  return refreshing;
-}
-
-function requestToken() {
+// Drive 連携: 認可コードだけをブラウザで受け取り、サーバーへ渡す(トークンはブラウザに残さない)。
+// 初回(または連携が取り消されたとき)だけ必要で、ボタンのタップから呼ぶこと。
+export function requestDriveCode() {
   return new Promise((resolve, reject) => {
     const gis = window.google?.accounts?.oauth2;
     if (!gis) return reject(new ReauthRequired("GIS unavailable"));
-    const timer = setTimeout(() => reject(new ReauthRequired("timeout")), 8000);
-    const client = gis.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: DRIVE_SCOPE,
-      hint: auth.currentUser?.email,
-      prompt: "",
-      callback: (res) => {
-        clearTimeout(timer);
-        if (res.access_token) {
-          saveDrive(res.access_token, Number(res.expires_in) || 3500);
-          resolve(res.access_token);
-        } else {
-          reject(new ReauthRequired(res.error));
-        }
-      },
-      error_callback: (err) => {
-        clearTimeout(timer);
-        reject(new ReauthRequired(err.type));
-      },
-    });
-    client.requestAccessToken();
+    gis
+      .initCodeClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: DRIVE_SCOPE,
+        ux_mode: "popup",
+        hint: auth.currentUser?.email,
+        prompt: "consent", // リフレッシュトークンを確実に受け取る
+        callback: (res) => (res.code ? resolve(res.code) : reject(new ReauthRequired(res.error))),
+        error_callback: (err) => reject(new ReauthRequired(err.type)),
+      })
+      .requestCode();
   });
 }
-
-// force=true: サーバーが 401 を返した場合など、期限内でも取り直す
-export async function getDriveToken(force = false) {
-  const saved = loadDrive();
-  if (!force && saved && saved.exp > Date.now() + 60000) return saved.token;
-  return silentRefresh();
-}
-
-// 期限切れになる前に裏で更新し、復帰時(タブを開き直したときなど)にも確認する
-const REFRESH_MARGIN = 5 * 60000;
-function refreshIfNeeded() {
-  const saved = loadDrive();
-  if (!auth.currentUser || (saved && saved.exp > Date.now() + REFRESH_MARGIN)) return;
-  silentRefresh().catch(() => {}); // 失敗時は次の API 呼び出しで再認証バナーが出る
-}
-setInterval(refreshIfNeeded, 60000);
-document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refreshIfNeeded());
-addEventListener("online", refreshIfNeeded);
