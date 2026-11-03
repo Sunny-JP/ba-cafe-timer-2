@@ -653,3 +653,6 @@ button.home:hover:not(:disabled) { background: transparent; }
 @media not all and (min-width: 900px) and (orientation: landscape) {
   .cols > div + div > .block { border-top: 1px solid color-mix(in srgb, var(--outline) 60%, transparent); }
 }
+
+/* ---- ピンチ・ダブルタップによる拡大を無効化 (スクロールは可) ---- */
+html { touch-action: pan-x pan-y; }

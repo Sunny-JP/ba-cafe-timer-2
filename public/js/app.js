@@ -261,7 +261,7 @@ function drawChart() {
       animation: { duration: 0 },
       transitions: { active: { animation: { duration: 0 } } },
       // 拡大してもぼやけないよう、画面の解像度より高い密度で描く
-      devicePixelRatio: Math.max(window.devicePixelRatio || 1, 3),
+      devicePixelRatio: Math.max(window.devicePixelRatio || 1, 2),
       // ホバー(スマホではタップ)で最も近い点を拾い、小ウインドウが追従する
       interaction: { mode: "realNearest", axis: "x", intersect: false },
       plugins: {
