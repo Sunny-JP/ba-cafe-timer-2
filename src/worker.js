@@ -10,9 +10,11 @@ import {
   deleteUserData,
   getCatalog,
   getCounts,
+  getBondStats,
   getDevices,
   sendDueNotifications,
   sendTestNotification,
+  setBondStats,
   setCatalog,
   setDevices,
   verifyIdToken,
@@ -71,43 +73,61 @@ const bondExists = (items, b) => items.some((x) => x.char_key === b.char_key && 
 // ---- 統計 (個人を特定しない件数だけを Firestore の stats/counters に加算する) ----
 
 // 「絆 N 以上」に到達したユーザー数を数える閾値
-const BOND_THRESHOLDS = [100, 90, 80, 70, 60, 50];
+const BOND_THRESHOLDS = [100, 95, 90, 80, 70, 60, 50]; // 各枠の下限(100 / 99〜95 / 94〜90 / 89〜80 …)。降順
 const pad2 = (n) => String(n).padStart(2, '0');
 
 function tapKeys(ms) {
   const d = new Date(ms);
   const day = `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}`;
-  return [`tap_d_${day}`, `tap_m_${logicalMonth(ms).replace('-', '')}`];
+  const jst = new Date(ms + 9 * 3600e3); // 時間帯・曜日は JST で集計する
+  return [`tap_d_${day}`, `tap_m_${logicalMonth(ms).replace('-', '')}`, `tap_h_${pad2(jst.getUTCHours())}`, `tap_w_${jst.getUTCDay()}`];
 }
 
-// items(変更前の記録) に bond を追加(sign=1)/削除(sign=-1)したときの加減算。
-// ユーザー単位の重複を避けるため、その閾値に届く記録が他に無い場合だけ数える。
-function bondDeltas(items, bond, sign, deltas = {}) {
-  const mine = items.filter((x) => x.char_key === bond.char_key && x.id !== bond.id);
-  const bump = (k) => (deltas[k] = (deltas[k] ?? 0) + sign);
-  bump(`bond_n_${bond.char_key}`);
-  for (const t of BOND_THRESHOLDS) {
-    if (bond.bond_level >= t && !mine.some((x) => x.bond_level >= t)) bump(`bond_ge${t}_${bond.char_key}`);
+// このユーザーの記録から、統計カウンタへの寄与(キャラを登録したか、閾値に届いたか)を求める。
+function bondCounts(items) {
+  const counts = {};
+  const best = new Map(); // char_key -> 最高ランク
+  for (const b of items) best.set(b.char_key, Math.max(best.get(b.char_key) ?? 0, b.bond_level));
+  for (const [key, level] of best) {
+    counts[`bond_n_${key}`] = 1; // 記録数ではなく「登録したことがあるユーザー数」
+    // 最高ランクが入る枠だけ数える(97 なら 99〜95 の枠のみ)。BOND_THRESHOLDS は降順
+    const t = BOND_THRESHOLDS.find((x) => level >= x);
+    if (t) counts[`bond_ge${t}_${key}`] = 1;
   }
-  return deltas;
+  return counts;
 }
 
 const knownCharKeys = async (env) =>
   new Set([...CHARACTERS.map((c) => c.key), ...(await getCatalog(env)).characters.map((c) => c.key)]);
 
-// 統計の失敗でユーザーの操作は失敗させない。未知の char_key は数えない(任意の文字列でカウンタが増えるのを防ぐ)
-async function bumpStats(env, deltas, withBonds = false) {
+// 統計の失敗でユーザーの操作は失敗させない
+async function bumpStats(env, deltas) {
   if (!env.FIREBASE_SERVICE_ACCOUNT) return;
   try {
-    if (withBonds) {
-      const known = await knownCharKeys(env);
-      for (const k of Object.keys(deltas)) {
-        if (k.startsWith('bond_') && !known.has(k.replace(/^bond_(?:n|ge\d+)_/, ''))) delete deltas[k];
-      }
-    }
     await addCounts(env, deltas);
   } catch {
     /* 統計のみ失敗 */
+  }
+}
+
+// 絆の統計を、現在の記録に合わせる。前回反映した分(ユーザーごとに保持)との差分だけを加算するので、
+// 何度呼んでも二重に数えず、過去にインポートした分も取り込める。
+// 未知の char_key は数えない(任意の文字列でカウンタが増えるのを防ぐ)
+async function syncBondStats(env, uid, items) {
+  if (!env.FIREBASE_SERVICE_ACCOUNT) return;
+  try {
+    const known = await knownCharKeys(env);
+    const next = Object.fromEntries(
+      Object.entries(bondCounts(items)).filter(([k, n]) => n && known.has(k.replace(/^bond_(?:n|ge\d+)_/, ''))),
+    );
+    const prev = await getBondStats(env, uid);
+    const deltas = {};
+    for (const k of new Set([...Object.keys(prev), ...Object.keys(next)])) deltas[k] = (next[k] ?? 0) - (prev[k] ?? 0);
+    if (!Object.values(deltas).some(Boolean)) return;
+    await addCounts(env, deltas);
+    await setBondStats(env, uid, next);
+  } catch (e) {
+    console.error('sync bond stats failed', e?.message);
   }
 }
 
@@ -149,17 +169,14 @@ function validCatalog(body) {
   return { characters: out };
 }
 
-// 少人数の件数は個人が推測できるため、K 未満は伏せる(null)
-const K_ANON = 5;
-const masked = (n) => (n > 0 && n < K_ANON ? null : n);
-
 // ---- ハンドラ ----
 
 const routes = {
-  'GET /api/bootstrap': async ({ drive, url }) => {
+  'GET /api/bootstrap': async ({ drive, env, uid, url }) => {
     const month = url.searchParams.get('month') ?? logicalMonth(Date.now());
     if (!isMonth(month)) throw new HttpError(400, 'month が不正です。');
     const [profile, taps, items] = await Promise.all([readProfile(drive), readTaps(drive, month), readBonds(drive)]);
+    await syncBondStats(env, uid, items); // 過去にインポートした分の取り込み
     return { profile, month, taps, last_tap: await lastTap(drive, month, taps), relationship: items.sort(byRecordedDesc) };
   },
 
@@ -198,8 +215,9 @@ const routes = {
       try {
         await addPending(env, uid, sendAt);
         scheduled = true;
-      } catch {
-        /* 通知予約のみ失敗 */
+      } catch (e) {
+        // 通知予約のみ失敗。タップは記録済みなので握りつぶすが、原因調査のためログは残す
+        console.error('schedule notification failed', e?.message);
       }
     }
     return { tap, scheduled };
@@ -224,7 +242,7 @@ const routes = {
 
   'GET /api/relationship': async ({ drive }) => ({ relationship: (await readBonds(drive)).sort(byRecordedDesc) }),
 
-  'POST /api/relationship': async ({ drive, env, body }) => {
+  'POST /api/relationship': async ({ drive, env, uid, body }) => {
     const err = validBond(body);
     if (err) throw new HttpError(400, err);
     const items = await readBonds(drive);
@@ -238,18 +256,20 @@ const routes = {
       created_at: now,
       updated_at: now,
     };
-    await drive.write('relationship.json', { items: [...items, item] });
-    await bumpStats(env, bondDeltas(items, item, 1), true);
+    const next = [...items, item];
+    await drive.write('relationship.json', { items: next });
+    await syncBondStats(env, uid, next);
     return { item };
   },
 
-  'DELETE /api/relationship': async ({ drive, env, body, url }) => {
+  'DELETE /api/relationship': async ({ drive, env, uid, body, url }) => {
     const id = body.id ?? url.searchParams.get('id');
     const items = await readBonds(drive);
     const target = items.find((x) => x.id === id);
     if (!target) throw new HttpError(404, '見つかりません。');
-    await drive.write('relationship.json', { items: items.filter((x) => x.id !== id) });
-    await bumpStats(env, bondDeltas(items, target, -1), true);
+    const next = items.filter((x) => x.id !== id);
+    await drive.write('relationship.json', { items: next });
+    await syncBondStats(env, uid, next);
     return { ok: true };
   },
 
@@ -295,17 +315,49 @@ const routes = {
       .map(([key, name]) => ({
         key,
         name,
-        records: masked(Math.max(0, counts[`bond_n_${key}`] ?? 0)),
-        reached: Object.fromEntries(BOND_THRESHOLDS.map((t) => [t, masked(Math.max(0, counts[`bond_ge${t}_${key}`] ?? 0))])),
+        records: Math.max(0, counts[`bond_n_${key}`] ?? 0),
+        reached: Object.fromEntries(BOND_THRESHOLDS.map((t) => [t, Math.max(0, counts[`bond_ge${t}_${key}`] ?? 0)])),
       }))
-      .filter((b) => b.records !== 0);
+      .filter((b) => b.records !== 0)
+      // 100 以上の人数が多い順。同数なら 90 以上、80 以上…の順に比べ、最後は登録ユーザー数
+      .sort((a, b) => {
+        for (const t of BOND_THRESHOLDS) if (a.reached[t] !== b.reached[t]) return b.reached[t] - a.reached[t];
+        return b.records - a.records;
+      });
 
-    return { users, pushUsers, daily: series('tap_d_', 30), monthly: series('tap_m_', 12), bonds, thresholds: BOND_THRESHOLDS, kAnon: K_ANON };
+    const dist = (prefix, n, pad) => Array.from({ length: n }, (_, i) => Math.max(0, counts[`${prefix}${pad ? pad2(i) : i}`] ?? 0));
+    const totalTaps = Object.entries(counts).reduce((a, [k, v]) => (k.startsWith('tap_m_') ? a + v : a), 0);
+    return { users, pushUsers, totalTaps, hourly: dist('tap_h_', 24, true), weekly: dist('tap_w_', 7), daily: series('tap_d_', 30), monthly: series('tap_m_', 12), bonds, thresholds: BOND_THRESHOLDS };
   },
 
   'POST /api/admin/test-push': async ({ env, uid }) => {
     const result = await sendTestNotification(env, uid);
     if (!result.devices) throw new HttpError(400, 'この管理者アカウントで通知がオンになっていません。アプリ側で通知をオンにしてください。');
+    return result;
+  },
+
+  // タップのテスト。記録は一切書き込まず、そのタップで何が起きるか(月・統計キー・通知予約)を返す。
+  // schedule=true のときだけ、60秒後に自分の端末へ届く通知を実際に予約して cron→FCM の経路まで確かめる
+  'POST /api/admin/test-tap': async ({ env, uid, body }) => {
+    const at = isIso(body?.tap_time) ? Date.parse(body.tap_time) : Date.now();
+    const sendAt = shouldScheduleNotification(at);
+    const result = {
+      tap_time: new Date(at).toISOString(),
+      logical_month: logicalMonth(at),
+      stats_keys: tapKeys(at),
+      notification: sendAt
+        ? { scheduled: true, send_at: new Date(sendAt).toISOString() }
+        : { scheduled: false, reason: '次の 4:00 / 16:00 (JST) を跨ぐため予約しません。' },
+      service_account: !!env.FIREBASE_SERVICE_ACCOUNT,
+      devices: env.FIREBASE_SERVICE_ACCOUNT ? (await getDevices(env, uid)).length : 0,
+      queued: null,
+    };
+    if (body?.schedule) {
+      if (!result.devices) throw new HttpError(400, 'この管理者アカウントで通知がオンになっていません。アプリ側で通知をオンにしてください。');
+      const when = Date.now() + 60000;
+      await addPending(env, uid, when);
+      result.queued = new Date(when).toISOString();
+    }
     return result;
   },
 
@@ -342,7 +394,7 @@ const routes = {
   },
 
   // 旧データの取り込み。既存 ID を保持し、不正な行・重複は読み飛ばす。
-  'POST /api/import': async ({ drive, env, body }) => {
+  'POST /api/import': async ({ drive, env, uid, body }) => {
     const result = { taps: 0, relationship: 0, skipped: 0, profile: false };
 
     const byMonth = new Map();
@@ -377,7 +429,6 @@ const routes = {
     if (Array.isArray(body.relationship)) {
       const items = await readBonds(drive);
       const now = new Date().toISOString();
-      const deltas = {};
       for (const b of body.relationship) {
         if (validBond(b || {}) || bondExists(items, b)) {
           result.skipped++;
@@ -391,12 +442,11 @@ const routes = {
           created_at: isIso(b.created_at) ? b.created_at : now,
           updated_at: isIso(b.updated_at) ? b.updated_at : now,
         };
-        bondDeltas(items, item, 1, deltas);
         items.push(item);
         result.relationship++;
       }
       await drive.write('relationship.json', { items });
-      await bumpStats(env, deltas, true);
+      await syncBondStats(env, uid, items);
     }
 
     if (body.profile && typeof body.profile === 'object') {

@@ -16,6 +16,7 @@ export function toast(msg) {
 const PAGES = [
   ['/admin/push', '通知'],
   ['/admin/stats', '統計'],
+  ['/admin/taptest', 'タップテスト'],
   ['/admin/characters', 'キャラクター追加'],
 ];
 

@@ -35,6 +35,7 @@ export const api = {
   adminMe: () => request('GET', '/api/admin/me', undefined, { drive: false }),
   adminStats: () => request('GET', '/api/admin/stats', undefined, { drive: false }),
   adminTestPush: () => request('POST', '/api/admin/test-push', undefined, { drive: false }),
+  adminTestTap: (body) => request('POST', '/api/admin/test-tap', body, { drive: false }),
   adminSaveCatalog: (catalog) => request('PUT', '/api/admin/catalog', catalog, { drive: false }),
   linkDrive: (code) => request('POST', '/api/auth/drive', { code }, { drive: false }),
   deleteAccount: () => request('DELETE', '/api/account'),

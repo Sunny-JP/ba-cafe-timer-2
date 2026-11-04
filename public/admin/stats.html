@@ -16,6 +16,39 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500&display=swap">
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/admin.css">
+  <style>
+    .panel { background: var(--container); border-radius: 16px; padding: 14px 16px 12px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+    .panel h2 { margin: 0; font-size: .9375rem; }
+    .panel .sub { font-size: .75rem; color: var(--on-variant); margin-top: -4px; }
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+    .kpi { background: var(--container); border-radius: 16px; padding: 12px 14px; display: grid; gap: 2px; }
+    .kpi b { font-size: 1.625rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+    .kpi span { font-size: .75rem; color: var(--on-variant); }
+    .kpi small { font-size: .6875rem; color: var(--on-variant); }
+    .vbars { display: flex; align-items: flex-end; gap: 2px; height: 140px; border-bottom: 1px solid var(--outline); }
+    .vbars .col { flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end; }
+    .vbars .bar { width: 100%; background: color-mix(in srgb, var(--primary) 45%, transparent); border-radius: 3px 3px 0 0; min-height: 1px; transition: background .15s; }
+    .vbars .col:hover .bar, .vbars .col.peak .bar { background: var(--primary); }
+    .axis { display: flex; gap: 2px; font-size: .625rem; color: var(--on-variant); }
+    .axis span { flex: 1; text-align: center; min-width: 0; white-space: nowrap; }
+    .hbars { display: grid; gap: 6px; }
+    .hbars .r { display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: center; font-size: .8125rem; }
+    .hbars .track { height: 12px; border-radius: 6px; background: color-mix(in srgb, var(--on-surface) 8%, transparent); overflow: hidden; }
+    .hbars .fill { height: 100%; border-radius: 6px; background: var(--primary); }
+    .hbars .v { text-align: right; font-variant-numeric: tabular-nums; }
+    .rank { display: grid; gap: 4px; max-height: 560px; overflow: auto; }
+    .rank .hd, .rank .rw { display: grid; grid-template-columns: 24px minmax(72px, 1.4fr) 44px repeat(7, minmax(40px, 1fr)); gap: 4px; align-items: center; font-size: .75rem; }
+    .rank .hd { color: var(--on-variant); position: sticky; top: 0; background: var(--container); padding-bottom: 2px; z-index: 1; }
+    .rank .hd span, .rank .rw .c { text-align: center; }
+    .rank .no { color: var(--on-variant); text-align: right; font-variant-numeric: tabular-nums; }
+    .rank .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8125rem; }
+    .rank .reg { text-align: center; font-variant-numeric: tabular-nums; color: var(--on-variant); }
+    .rank .c { border-radius: 6px; padding: 5px 0; font-variant-numeric: tabular-nums; background: color-mix(in srgb, var(--primary) calc(var(--k) * 70%), transparent); }
+    .rank .c.z { background: transparent; color: var(--on-variant); opacity: .5; }
+    .tip { position: fixed; z-index: 10; pointer-events: none; padding: 4px 8px; border-radius: 8px; font-size: .75rem; background: var(--on-surface); color: var(--surface, var(--container)); white-space: nowrap; }
+    .vbars .col, .hbars .r { cursor: default; }
+  </style>
 </head>
 <body>
   <main id="login" class="center" hidden>
@@ -27,17 +60,17 @@
     <div id="shell"></div>
     <div id="content" hidden>
       <h2>統計</h2>
-      <p class="note">個人を特定できる情報は保存せず、件数のみを集計しています。少人数(<span id="kanon">5</span>人未満)の項目は「&lt;5」と表示します。日付は UTC です。</p>
-      <div class="cards" id="cards"></div>
-      <div class="row" style="align-items: start">
-        <div style="flex: 1 1 260px"><h2>日別タップ数 (直近30日)</h2><div class="scroll"><table class="tbl" id="daily"></table></div></div>
-        <div style="flex: 1 1 260px"><h2>月別タップ数</h2><div class="scroll"><table class="tbl" id="monthly"></table></div></div>
+      <p class="note">個人を特定できる情報は保存せず、件数のみを集計しています。日付は UTC、時間帯・曜日は JST です。</p>
+      <div class="kpis" id="cards"></div>
+      <div class="grid2">
+        <section class="panel"><h2>時間帯別タップ数</h2><div class="sub" id="hourly-sub"></div><div class="vbars" id="hourly"></div><div class="axis" id="hourly-axis"></div></section>
+        <section class="panel"><h2>曜日別タップ数</h2><div class="sub" id="weekly-sub"></div><div class="vbars" id="weekly"></div><div class="axis" id="weekly-axis"></div></section>
       </div>
-      <div>
-        <h2>キャラ別の絆</h2>
-        <div class="scroll" style="max-height: 480px"><table class="tbl" id="bonds"></table></div>
-        <p class="note">「N以上」は、そのランク以上を記録したユーザー数です(1人は1回だけ数えます)。</p>
-      </div>
+      <section class="panel">
+        <h2>キャラ別の絆ランキング</h2>
+        <div class="rank" id="bonds"></div>
+        <p class="note">1人は1キャラにつき1つの枠にだけ数えます(50 未満はどの枠にも入りません)。「登録」はそのキャラを1回でも登録したことのあるユーザー数です。</p>
+      </section>
     </div>
   </div>
 

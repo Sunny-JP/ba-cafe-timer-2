@@ -499,38 +499,56 @@ async function flushPendingTaps() {
   }
 }
 
+// タップした手応え: 最低限の表示時間を持つ処理中表示
+const TAP_MIN_BUSY = 600;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// タップを記録する。記録できた(または端末に保存した)ら true
+async function recordTap() {
+  const prev = { lastTap: state.lastTap, monthTaps: state.monthTaps, calTaps: state.calTaps };
+  const temp = { id: uuidv7(), tap_time: new Date().toISOString() };
+  const onCurrent = state.calMonth === logicalMonth(Date.now());
+  state.lastTap = temp; // 楽観的更新
+  state.monthTaps = [...state.monthTaps, temp];
+  if (onCurrent) state.calTaps = state.monthTaps;
+  render();
+  let data;
+  try {
+    data = await api.tap();
+  } catch (e) {
+    if (e instanceof ReauthRequired) {
+      // 再認証が必要でもタップは失わない: 端末に保存し、連携し直したあとに送る
+      savePendingTaps([...loadPendingTaps(), temp]);
+      $("#reauth").hidden = false;
+      toast(t("tapQueued"));
+      render();
+      return true;
+    }
+    toast(e.message);
+  }
+  if (data) {
+    state.lastTap = data.tap;
+    state.monthTaps = state.monthTaps.map((t) => (t === temp ? data.tap : t));
+    if (onCurrent) state.calTaps = state.monthTaps;
+    if (!data.scheduled && state.pushOn) toast(t("noPushSchedule"));
+  } else {
+    Object.assign(state, prev);
+  }
+  render();
+  return !!data;
+}
+
 const actions = {
   async tap() {
-    const prev = { lastTap: state.lastTap, monthTaps: state.monthTaps, calTaps: state.calTaps };
-    const temp = { id: uuidv7(), tap_time: new Date().toISOString() };
-    const onCurrent = state.calMonth === logicalMonth(Date.now());
-    state.lastTap = temp; // 楽観的更新
-    state.monthTaps = [...state.monthTaps, temp];
-    if (onCurrent) state.calTaps = state.monthTaps;
-    render();
-    let data;
+    if ($("#busy").open) return; // 処理中の連打は無視
+    busy.show(t("tapping"), 1);
+    const started = Date.now();
     try {
-      data = await api.tap();
-    } catch (e) {
-      if (e instanceof ReauthRequired) {
-        // 再認証が必要でもタップは失わない: 端末に保存し、連携し直したあとに送る
-        savePendingTaps([...loadPendingTaps(), temp]);
-        $("#reauth").hidden = false;
-        toast(t("tapQueued"));
-        render();
-        return;
-      }
-      toast(e.message);
+      await recordTap();
+    } finally {
+      await sleep(Math.max(0, TAP_MIN_BUSY - (Date.now() - started)));
+      busy.hide();
     }
-    if (data) {
-      state.lastTap = data.tap;
-      state.monthTaps = state.monthTaps.map((t) => (t === temp ? data.tap : t));
-      if (onCurrent) state.calTaps = state.monthTaps;
-      if (!data.scheduled && state.pushOn) toast(t("noPushSchedule"));
-    } else {
-      Object.assign(state, prev);
-    }
-    render();
   },
   "ticket-use": (b) => saveProfile({ [`ticket${b.dataset.n}_time`]: new Date().toISOString() }),
   "dd-toggle"(b) {
