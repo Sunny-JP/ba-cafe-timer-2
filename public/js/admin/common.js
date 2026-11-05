@@ -1,4 +1,5 @@
 // 管理ページ共通: ログイン・権限確認・ナビ。権限の判定はサーバー(ADMIN_UIDS)が行い、ここでは表示のみ。
+// ページ自体は静的ファイルで認証前に配信される(ログインは Authorization ヘッダーのため)が、管理者でなければ / へ戻す。
 import { login, logout, onUser } from "../auth.js";
 import { api } from "../api.js";
 
@@ -34,16 +35,20 @@ export function initAdminPage(active, onReady) {
 
   onUser(async (user) => {
     $("#login").hidden = !!user;
-    $("#admin").hidden = !user;
+    $("#admin").hidden = true; // 管理者と確認できるまで中身は出さない
     if (!user) return;
     try {
       await api.adminMe(); // 管理者でなければ 403
     } catch (e) {
+      // 管理者でないアカウントは管理ページに留めず、アプリへ戻す (履歴にも残さない)
+      if (e.status === 403) return location.replace("/");
+      $("#admin").hidden = false;
       $("#denied").hidden = false;
       $("#denied").textContent = e.message;
       $("#content").hidden = true;
       return;
     }
+    $("#admin").hidden = false;
     $("#content").hidden = false;
     onReady(user);
   });
