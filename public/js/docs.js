@@ -37,6 +37,7 @@ export const SKELETON = {
 
 
   <h2>{{guide.title}}</h2>
+  <p>{{guide.demo}}</p>
 
   <h3>{{guide.h1}}</h3>
   <ul>
@@ -195,7 +196,6 @@ export const SKELETON = {
   <h3>{{privacy.h2}}</h3>
   <ul>
     <li>{{privacy.li4}}</li>
-    <li>{{privacy.li5}}</li>
   </ul>
 
   <h3>{{privacy.h3}}</h3>
@@ -339,6 +339,12 @@ export const TEXT = {
     en: `<b>Note:</b> Changes in pace caused by events, gifts for students and so on are not taken into account. Please use it only as a guide.`,
     ko: `<b>주의:</b> 이벤트나 학생에게 주는 선물 여부 등으로 인한 속도 변화는 고려하지 않습니다. 어디까지나 참고용으로 이용해 주세요.`,
     zh: `<b>注意：</b>活动或赠送学生礼物等造成的速度变化不在考虑范围内，请仅作参考。`,
+  },
+  "guide.demo": {
+    ja: `ログインせずに画面の見た目を確認できる<a href="/demo.html" target="_blank" rel="noopener">デモページ</a>があります。見本のデータが表示されるだけで、操作しても記録は保存されません。`,
+    en: `You can look around the screens without signing in on the <a href="/demo.html" target="_blank" rel="noopener">demo page</a>. It only shows sample data, and nothing you do there is saved.`,
+    ko: `로그인하지 않고 화면을 확인할 수 있는 <a href="/demo.html" target="_blank" rel="noopener">데모 페이지</a>가 있습니다. 샘플 데이터만 표시되며, 조작해도 기록은 저장되지 않습니다.`,
+    zh: `无需登录即可查看界面的<a href="/demo.html" target="_blank" rel="noopener">演示页面</a>。页面只显示示例数据，操作不会保存任何记录。`,
   },
   "guide.title": {
     ja: `使い方ガイド`,
@@ -677,10 +683,10 @@ export const TEXT = {
     zh: `Q：显示「Drive 授权已过期」。`,
   },
   "faq.a16": {
-    ja: `A: Google Driveへのアクセスは、セキュリティのため約1時間で期限が切れます。通常は自動で更新されますが、更新できないときは画面上部の「再認証」ボタンを押してください。`,
-    en: `A: For security, access to Google Drive expires after about an hour. It is normally renewed automatically; if it cannot be, press the "Re-authenticate" button at the top of the screen.`,
-    ko: `A: Google Drive 접근은 보안을 위해 약 1시간 후 만료됩니다. 보통은 자동으로 갱신되지만, 갱신되지 않으면 화면 상단의 「재인증」 버튼을 눌러 주세요.`,
-    zh: `A：出于安全考虑，对 Google Drive 的访问约 1 小时后过期。通常会自动更新，若无法更新，请按屏幕上方的「重新授权」按钮。`,
+    ja: `A: 通常は自動でGoogle Drive認証が更新されますが、更新できないときは画面上部の「再認証」ボタンを押してください。`,
+    en: `A: Google Drive authorization is usually updated automatically, but if it cannot be updated, please press the "Reauthorize" button at the top of the screen.`,
+    ko: `A: 보안을 위해 Google Drive 접근은 약 1시간 후 만료됩니다. 일반적으로 자동으로 갱신되지만, 갱신되지 않을 경우 화면 상단의 「재인증」 버튼을 눌러 주세요.`,
+    zh: `A：为安全起见，Google Drive 的访问权限大约一小时后会过期。通常会自动更新；如果无法更新，请按屏幕顶部的“重新认证”按钮。`,
   },
   "faq.q17": {
     ja: `Q: Google以外のログイン方法はありますか?`,
@@ -698,13 +704,13 @@ export const TEXT = {
     ja: `利用規約`,
   },
   "terms.p1": {
-    ja: `この利用規約は、本ウェブサイト上で提供するサービス(以下、「本サービス」といいます。)の利用条件を定めるものです。`,
+    ja: `この利用規約は、本ウェブサイト上で提供するサービス(以下、「本サービス」といいます)の利用条件を定めるものです。`,
   },
   "terms.h1": {
     ja: `1. 免責事項`,
   },
   "terms.li1": {
-    ja: `本サービスは現状有姿で提供され、その機密性、完全性、可用性を保証するものではありません。`,
+    ja: `本サービスは現状のまま提供するもので、正確性・安全性・継続的に利用できることを保証するものではありません。`,
   },
   "terms.li2": {
     ja: `本サービスの利用により生じた損害(ゲーム内での損失、データ消失など)について、運営者は一切の責任を負いません。`,
@@ -731,7 +737,7 @@ export const TEXT = {
     ja: `その他、運営者が不適切と判断する行為`,
   },
   "terms.li9": {
-    ja: `禁止事項に違反した場合は、通知登録の削除、IPアドレス遮断などの相当な措置を行うことがあります。`,
+    ja: `禁止事項に違反した場合は、通知登録の削除、IPアドレス遮断などの措置を行うことがあります。`,
   },
   "terms.h3": {
     ja: `3. サービスの変更・停止`,
@@ -761,22 +767,19 @@ export const TEXT = {
     ja: `1. 収集する情報`,
   },
   "privacy.li1": {
-    ja: `<b>認証情報</b>: Googleログイン時に提供されるユーザーID、メールアドレス、表示名、プロフィール画像URL。これらはユーザーの識別と表示のためにのみ使用されます。`,
+    ja: `認証情報: Googleログイン時に提供されるユーザーID、メールアドレス、表示名、プロフィール画像URL。これらはユーザーの識別と表示のためにのみ使用されます。`,
   },
   "privacy.li2": {
-    ja: `<b>利用データ</b>: タイマーのタップ履歴、チケット時刻、絆ランクの記録、表示設定(タイムゾーン)。これらは運営者のサーバーではなく、ユーザー自身のGoogle Driveのアプリ専用フォルダに保存されます。`,
+    ja: `利用データ: タイマーのタップ履歴、チケット時刻、絆ランクの記録、表示設定(タイムゾーン)。これらは運営者のサーバーではなく、ユーザー自身のGoogle Driveのアプリ専用フォルダに保存されます。`,
   },
   "privacy.li3": {
-    ja: `<b>通知トークン・通知予約</b>: プッシュ通知を送信するために必要な端末トークンと、未送信の通知予約。運営者のサーバーに保存されます。`,
+    ja: `通知トークン・通知予約: プッシュ通知を送信するために必要な端末トークンと、未送信の通知予約。運営者のサーバーに保存されます。`,
   },
   "privacy.h2": {
     ja: `2. Google Driveへのアクセス`,
   },
   "privacy.li4": {
     ja: `本サービスは、Google Driveのアプリ専用領域(appDataFolder)のみにアクセスする権限(drive.appdata)を要求します。Driveにあるその他のファイルを閲覧・変更することはありません。`,
-  },
-  "privacy.li5": {
-    ja: `Driveへのアクセスに用いる一時的なアクセストークンは、運営者のサーバーに保存せず、リクエストの処理中にのみ使用します。`,
   },
   "privacy.h3": {
     ja: `3. 利用目的`,
@@ -800,10 +803,10 @@ export const TEXT = {
     ja: `当サイトでは、サービスの改善を目的として以下のツールを利用し、個人を特定できない匿名のトラフィックデータを収集しています。`,
   },
   "privacy.li10": {
-    ja: `<b>Google Analytics</b>: Cookieを使用してサイトの利用状況を収集するために使用されます。`,
+    ja: `Google Analytics: Cookieを使用してサイトの利用状況を収集するために使用されます。`,
   },
   "privacy.li11": {
-    ja: `<b>Cloudflare Browser Insights</b>: サイトのパフォーマンスや接続状況を分析するために使用されます。`,
+    ja: `Cloudflare Browser Insights: サイトのパフォーマンスや接続状況を分析するために使用されます。`,
   },
   "privacy.h5": {
     ja: `5. 第三者への提供`,

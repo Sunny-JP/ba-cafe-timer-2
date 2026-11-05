@@ -744,3 +744,24 @@ dialog#update { width: min(92vw, 400px); padding: 0; }
   border: 3px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor;
   animation: spin .8s linear infinite;
 }
+/* デモ画面で押せない操作 (見た目は変えず、カーソルだけ示す) */
+[data-demo-off], [data-demo-off] * { cursor: not-allowed !important; }
+/* インポート (label.menu-item) も、ほかのボタンと同じ押した感じ・フォーカス表示にする */
+label.menu-item { transition: background-color .15s, transform .18s ease-out; }
+label.menu-item:active { transform: translateY(2px) scale(.96); transition-duration: .04s; }
+label.menu-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+/* ログイン前: 言語選択は1行めに置き、About・使い方ガイド・公式サイトを2行めに並べる */
+#login-lang { flex-basis: 100%; display: flex; justify-content: center; }
+/* 公式サイトのリンクも、隣の About / 使い方ガイド (ghost ボタン) と同じ見た目にする */
+#site-link {
+  display: inline-flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 20px;
+  font: 500 .875rem var(--font); text-decoration: none; transition: background-color .15s;
+}
+#site-link:hover { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+/* カレンダーの年月 (1つの一覧から選んで飛ぶ) */
+.cal-title { display: flex; justify-content: center; }
+.cal-title .dd.lg .dd-btn { font-size: 1.75rem; font-weight: 500; line-height: 1.3; }
+.cal-title .dd.lg .dd-btn svg { display: none; }
+.cal-title .dd.lg .dd-list { min-width: 160px; max-height: 280px; left: 50%; transform: translateX(-50%); }
+.cal-title .dd.lg .dd-list.open { transform: translateX(-50%); }
+.cal-title .dd.lg .dd-list button { justify-content: center; font-weight: 500; }

@@ -8,6 +8,12 @@ import { clearGameDataCache, ensureGameData } from "./gamedata.js";
 import { logicalMonth, nextMonth, prevMonth, uuidv7 } from "./time.js";
 import { DEFAULT_ACCENT, MODES, WEEKDAYS, bondRecords, dayCounts, heatLevel, icon, langPicker, loader, renderBond, renderCalendar, renderDoc, renderLogList, renderMenu, renderSettings, renderTimer, renderUpdateNotice, tick } from "./views.js";
 import { UPDATE_LOGS } from "./updates.js";
+import { applyDemo, demoLang } from "./demo.js";
+
+// /demo.html: 使い方ガイドのスクリーンショット用。見本のデータを表示するだけで、保存も通信もしない
+const DEMO = !!window.CT_DEMO;
+// デモで操作できるのは、画面の切り替えなど表示だけのもの
+const DEMO_ACTIONS = new Set(["dd-toggle", "dd-pick", "gifts-scroll", "theme-toggle", "day", "settings", "doc", "mode", "accent-reset"]);
 
 // CALENDAR_LIMITS.MIN: 旧実装の new Date(2025, 12, 1) は 2026-01-01。意図の確認待ち(設計書 §15)
 const CAL_MIN = "2026-01";
@@ -71,6 +77,7 @@ const store = {
     }
   },
   set(k, v) {
+    if (DEMO) return; // デモの操作を本物のアプリの設定に残さない
     try {
       localStorage.setItem(`ct.${k}`, v);
     } catch {
@@ -106,8 +113,10 @@ const state = {
 const wide = matchMedia("(min-width: 900px) and (orientation: landscape)");
 
 function render(animate = false) {
-  state.calAtMin = state.calMonth <= CAL_MIN;
-  state.calAtMax = state.calMonth >= logicalMonth(Date.now());
+  state.calMinMonth = CAL_MIN;
+  state.calMaxMonth = logicalMonth(Date.now());
+  state.calAtMin = state.calMonth <= state.calMinMonth;
+  state.calAtMax = state.calMonth >= state.calMaxMonth;
   // 横長の画面ではタイマーとカレンダーを並べて表示する(カレンダーのタブは隠れる)
   const tab = wide.matches && state.tab === "calendar" ? "timer" : state.tab;
   view.innerHTML = state.loading ? loader() : tab === "timer" && wide.matches ? `<div class="cols"><div>${renderTimer(state)}</div><div>${renderCalendar(state)}</div></div>` : { timer: renderTimer, calendar: renderCalendar, bond: renderBond, settings: renderSettings, doc: renderDoc }[tab](state);
@@ -116,6 +125,7 @@ function render(animate = false) {
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", b.dataset.tab === tab);
   drawChart();
   updateGiftNav();
+  lockDemo(view);
   if (animate) {
     // 画面遷移時だけ短いフェードイン(再描画のたびには動かさない)
     view.classList.remove("enter");
@@ -410,6 +420,17 @@ const isDark = () => (state.mode === "auto" ? dark.matches : state.mode === "dar
 
 function renderMenuBody() {
   $("#menu-body").innerHTML = renderMenu(state);
+  lockDemo($("#menu-body"));
+}
+
+// デモ画面: 押しても何も起きない操作に印を付け、ファイルの選択(インポート)も開かないようにする
+function lockDemo(root) {
+  if (!DEMO) return;
+  for (const el of root.querySelectorAll("[data-act]")) if (!DEMO_ACTIONS.has(el.dataset.act) && el.id !== "home-btn") el.dataset.demoOff = "";
+  for (const input of root.querySelectorAll('input[type="file"]')) {
+    input.disabled = true;
+    input.closest("label")?.setAttribute("data-demo-off", "");
+  }
 }
 
 function applyTheme() {
@@ -447,12 +468,26 @@ function show(screen) {
 }
 
 // API 呼び出しの共通エラー処理。再認証が必要ならバナーを出す。
+// ログインした直後に Drive が未連携だったときは、バナーを出さずにそのまま Drive の認可画面を開く。
+// 開けなかった(ポップアップがブロックされた・閉じられた)ときだけ、従来どおりバナーの「再認証」にする。
+let autoLink = false;
 async function guarded(fn) {
   try {
     return await fn();
   } catch (e) {
-    if (e instanceof ReauthRequired) $("#reauth").hidden = false;
-    else toast(e.message);
+    if (e instanceof ReauthRequired) {
+      if (autoLink) {
+        autoLink = false;
+        try {
+          await api.linkDrive(await requestDriveCode());
+          $("#reauth").hidden = true;
+          return await guarded(fn);
+        } catch {
+          /* 下のバナーで再認証してもらう */
+        }
+      }
+      $("#reauth").hidden = false;
+    } else toast(e.message);
     return undefined;
   }
 }
@@ -460,6 +495,7 @@ async function guarded(fn) {
 // タイマー(と当月のカレンダー)に要る分だけ先に読んで表示し、絆とゲームデータは続けて裏で読む
 async function loadAll() {
   const data = await guarded(() => api.bootstrap(logicalMonth(Date.now())));
+  autoLink = false; // 連携済みだった場合は、あとで自動では開かない
   if (!data) return;
   Object.assign(state, {
     profile: data.profile,
@@ -604,13 +640,15 @@ const actions = {
       state.bondLevel = null;
       store.set("char", value);
       render();
+    } else if (field === "cal-ym") {
+      if (!DEMO && value !== state.calMonth) loadCalendar(value);
     } else if (field === "tz") {
-      saveProfile({ timezone: value || null });
+      if (!DEMO) saveProfile({ timezone: value || null });
     } else if (field === "lang") {
-      setLang(value);
+      setLang(value, !DEMO);
       applyTheme();
       renderLoginLang();
-      if ($("#about").open) loadDoc("about").then((html) => ($("#about-body").innerHTML = html));
+      if ($("#about").open) loadDoc(loginDoc).then((html) => ($("#about-body").innerHTML = html));
       (state.tab === "doc" ? loadDoc(state.doc) : Promise.resolve(null)).then((html) => {
         if (html !== null) state.docHtml = html;
         if (state.user) render(); // ログイン前は描画する画面がない
@@ -645,6 +683,7 @@ const actions = {
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       toast(t("exported", { taps: data.taps.length, bonds: data.relationship.length }));
     }),
+  "cal-today": () => state.calMonth !== state.calMaxMonth && loadCalendar(state.calMaxMonth),
   "cal-prev": () => loadCalendar(prevMonth(state.calMonth)),
   "cal-next": () => loadCalendar(nextMonth(state.calMonth)),
   day(b) {
@@ -738,6 +777,7 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-act]");
   if (!b || b.disabled) return;
   const { act, n } = b.dataset;
+  if (DEMO && !DEMO_ACTIONS.has(act)) return;
   actions[act]?.(b);
   // 押した結果で描き直されたボタンも、沈んだ状態からふわっと戻す
   if (!b.isConnected) {
@@ -774,10 +814,15 @@ $("#update-ok").addEventListener("click", () => {
 // ログイン前の画面: 言語の選択と About
 const renderLoginLang = () => ($("#login-lang").innerHTML = langPicker(getLang()));
 renderLoginLang();
-$("#about-btn").addEventListener("click", async () => {
-  $("#about-body").innerHTML = await loadDoc("about");
-  $("#about").showModal();
-});
+// ログイン前の画面から開く文書 (About / 使い方ガイド)。言語を切り替えたら開いている文書を読み直す
+let loginDoc = "about";
+for (const [btn, id] of [["#about-btn", "about"], ["#guide-btn", "guide"]]) {
+  $(btn).addEventListener("click", async () => {
+    loginDoc = id;
+    $("#about-body").innerHTML = await loadDoc(id);
+    $("#about").showModal();
+  });
+}
 $("#about-close").addEventListener("click", () => $("#about").close());
 dark.addEventListener("change", applyTheme);
 wide.addEventListener("change", () => render(true));
@@ -787,7 +832,7 @@ for (const b of document.querySelectorAll("nav button")) b.innerHTML = icon(NAV_
 
 view.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (e.target.dataset.form !== "bond") return;
+  if (DEMO || e.target.dataset.form !== "bond") return;
   const f = new FormData(e.target);
   const bond = { char_key: state.bondChar, bond_level: Number(f.get("bond_level")), recorded_at: f.get("recorded_at") };
   // 送信中はボタンを無効にして回転アイコンを出す (再描画すると入力中の値が消えるので、ボタンだけ触る)
@@ -824,11 +869,20 @@ document.addEventListener("input", (e) => {
   applyTheme();
 });
 
+// インポートは <label> なので、ほかのボタンと同じようにキーボード (Enter / Space) でも開けるようにする
+document.addEventListener("keydown", (e) => {
+  const label = e.target instanceof Element && e.target.matches("label.menu-item") ? e.target : null;
+  if (!label || (e.key !== "Enter" && e.key !== " ")) return;
+  e.preventDefault();
+  label.querySelector("input")?.click();
+});
+
 // 画像がない生徒は、アイコンを出さず名前だけにする (error は伝播しないので capture で受ける)
 document.addEventListener("error", (e) => (e.target.classList?.contains("dd-icon") || e.target.classList?.contains("bond-icon")) && e.target.remove(), true);
 
 document.addEventListener("change", async (e) => {
   const kind = e.target.dataset.form;
+  if (DEMO && kind !== "bond-char") return;
   if (kind === "bond-char") {
     state.bondChar = e.target.value;
     state.bondLevel = null;
@@ -870,7 +924,10 @@ document.querySelector("nav").addEventListener("click", (e) => {
   if (!state.bondReady && !state.deferredLoading) loadDeferred(); // 裏の読み込みが失敗していたときのやり直し
 });
 
-$("#login-btn").addEventListener("click", () => guarded(login));
+$("#login-btn").addEventListener("click", async () => {
+  autoLink = true; // ログイン後、未連携ならそのまま Drive の認可へ進む
+  if (!(await guarded(login))) autoLink = false;
+});
 $("#reauth-btn").addEventListener("click", async () => {
   if (await guarded(async () => api.linkDrive(await requestDriveCode()))) {
     $("#reauth").hidden = true;
@@ -884,28 +941,44 @@ applyTheme();
 
 setInterval(() => tick(view), 1000);
 
-onUser((user) => {
-  state.user = user;
-  if (!user) {
-    // ログアウト(失効を含む): 端末のゲームデータと、前のユーザーの絆の記録を残さない
-    clearGameDataCache();
-    Object.assign(state, { relationship: [], bondReady: false, deferredLoading: false });
-    return show("login");
-  }
+if (DEMO) {
+  // タイトル (Cafe Timer 2) は、本物のアプリへ戻るボタンにする
+  $("#home-btn").addEventListener("click", () => location.assign("/"));
+  // ログインも通信もせず、見本のデータで画面を出す
+  if (demoLang) setLang(demoLang, false);
+  applyDemo(state);
+  applyTheme();
   show("app");
-  showForegroundNotifications();
-  state.loading = true;
+  if (state.tab === "doc") state.docHtml = await loadDoc(state.doc);
   render();
-  flushPendingTaps()
-    .then(loadAll)
-    .finally(() => {
-      // 取得に失敗した場合も、読み込み表示のまま止まらないようにする
-      state.loading = false;
-      render();
-    });
-});
+  if (new URLSearchParams(location.search).get("menu")) {
+    renderMenuBody();
+    $("#menu").showModal();
+  }
+} else {
+  onUser((user) => {
+    state.user = user;
+    if (!user) {
+      // ログアウト(失効を含む): 端末のゲームデータと、前のユーザーの絆の記録を残さない
+      clearGameDataCache();
+      Object.assign(state, { relationship: [], bondReady: false, deferredLoading: false });
+      return show("login");
+    }
+    show("app");
+    showForegroundNotifications();
+    state.loading = true;
+    render();
+    flushPendingTaps()
+      .then(loadAll)
+      .finally(() => {
+        // 取得に失敗した場合も、読み込み表示のまま止まらないようにする
+        state.loading = false;
+        render();
+      });
+  });
+}
 
-if ("serviceWorker" in navigator && !pushEnabled()) {
+if (!DEMO && "serviceWorker" in navigator && !pushEnabled()) {
   // 通知を使わない場合も PWA としてインストール可能にするため登録する
   navigator.serviceWorker.register("/firebase-messaging-sw.js").catch(() => {});
 }

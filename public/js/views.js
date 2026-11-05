@@ -11,6 +11,7 @@ import {
   logicalDay,
   nextBoundary,
   nextTapTime,
+  prevMonth,
 } from './time.js';
 
 export const esc = (s) =>
@@ -28,6 +29,12 @@ const ICONS = {
   logout: 'M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z',
   upload: 'M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z',
   download: 'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
+  info: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z',
+  book: 'M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z',
+  help: 'M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z',
+  file: 'M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+  shield: 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z',
+  person: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
   chevron: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6-6-6z',
   dropdown: 'M7 10l5 5 5-5z',
   settings: 'M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z',
@@ -102,6 +109,13 @@ export function dayCounts(taps) {
   return counts;
 }
 
+// 年月を1つの一覧から選んで飛ぶ (新しい月が上)。選べるのは、記録できる最初の月 (calMinMonth) から今月 (calMaxMonth) まで
+function calPicker(state) {
+  const options = [];
+  for (let m = state.calMaxMonth; m >= state.calMinMonth; m = prevMonth(m)) options.push([m, m.replace('-', '. ').replace(/\. 0/, '. ')]);
+  return dropdown({ field: 'cal-ym', value: state.calMonth, large: true, options });
+}
+
 export function renderCalendar(state) {
   const { calMonth: month, calTaps: taps, selectedDay, calLoading } = state;
   const tz = state.profile.timezone;
@@ -125,8 +139,9 @@ export function renderCalendar(state) {
       <div class="cal-head">
         <button class="ghost" data-act="cal-prev" ${state.calAtMin ? 'disabled' : ''}>Prev</button>
         <div>
-          <h2 class="cal-title">${y}. ${m}</h2>
+          <h2 class="cal-title">${calPicker(state)}</h2>
           <button class="ghost small" data-act="save-image">SAVE IMAGE</button>
+          <button class="ghost small" data-act="cal-today" ${month === state.calMaxMonth ? 'disabled' : ''}>${t('thisMonth')}</button>
         </div>
         <button class="ghost" data-act="cal-next" ${state.calAtMax ? 'disabled' : ''}>Next</button>
       </div>
@@ -212,7 +227,7 @@ export const charIcon = (key) => `/img/students/${encodeURIComponent(key)}.webp`
 
 // 生徒の選択肢。日本語は五十音順(データ順)、他言語は表示名の辞書順に並べる
 function charOptions() {
-  const list = CHARACTERS.map((c) => [c.key, studentName(c.name), charIcon(c.key)]);
+  const list = CHARACTERS.map((c) => [c.key, studentName(c.name)]);
   const lang = getLang();
   return lang === 'ja' ? list : list.sort((a, b) => a[1].localeCompare(b[1], lang));
 }
@@ -285,6 +300,7 @@ export function renderBond(state) {
 // ---- メニュー (右上ハンバーガー) ----
 
 export const DOCS = ['about', 'guide', 'faq', 'terms', 'privacy', 'operator'];
+const DOC_ICON = { about: 'info', guide: 'book', faq: 'help', terms: 'file', privacy: 'shield', operator: 'person' };
 export const MODES = ['auto', 'light', 'dark'];
 export const DEFAULT_ACCENT = '#4355b9';
 
@@ -321,7 +337,7 @@ export function renderMenu(state) {
       <span class="who"><strong>${esc(name)}</strong>${u.displayName ? `<small>${esc(u.email ?? '')}</small>` : ''}</span>
     </div>
     <div class="menu-list">
-      ${DOCS.map((id) => `<button class="menu-item" data-act="doc" data-doc="${id}">${icon('chevron')}${esc(t('doc' + id[0].toUpperCase() + id.slice(1)))}</button>`).join('')}
+      ${DOCS.map((id) => `<button class="menu-item" data-act="doc" data-doc="${id}">${icon(DOC_ICON[id])}${esc(t('doc' + id[0].toUpperCase() + id.slice(1)))}</button>`).join('')}
     </div>
     <hr>
     <div class="menu-list">
@@ -371,7 +387,7 @@ export function renderSettings(state) {
             : `<span class="menu-text">${t(state.pushOn ? 'pushTurnOff' : 'pushTurnOn')}<small>${t(state.pushOn ? 'pushStateOn' : 'pushStateOff')}</small></span>`
         }</button>
         ${state.pushSupported ? '' : `<p class="sub hint">${t('pushUnsupported')}</p>`}
-        <label class="menu-item">${icon('upload')}${t('importOld')}<input type="file" accept="application/json" data-form="import" hidden></label>
+        <label class="menu-item" role="button" tabindex="0">${icon('upload')}${t('importOld')}<input type="file" accept="application/json" data-form="import" hidden></label>
         <button class="menu-item" data-act="export-data" ${state.pending.has('export-data') ? 'disabled' : ''}>${icon('download')}${t('exportData')}</button>
         <button class="menu-item danger" data-act="delete-account">${icon('trash')}${t('deleteData')}</button>
         <button class="menu-item" data-act="logout">${icon('logout')}${t('logout')}</button>

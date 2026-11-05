@@ -69,6 +69,7 @@ const DICT = {
     exportData: 'データのエクスポート',
     exporting: 'データを書き出し中…',
     deleting: '記録を削除中…',
+    thisMonth: '今月',
     exported: 'エクスポート完了: タップ {taps} / 絆 {bonds} 件',
     deleteData: 'データ削除',
   },
@@ -139,6 +140,7 @@ const DICT = {
     exportData: 'Export data',
     exporting: 'Exporting data…',
     deleting: 'Deleting the record…',
+    thisMonth: 'This month',
     exported: 'Export complete: {taps} taps / {bonds} bond records',
     deleteData: 'Delete data',
   },
@@ -209,6 +211,7 @@ const DICT = {
     exportData: '데이터 내보내기',
     exporting: '데이터를 내보내는 중…',
     deleting: '기록을 삭제하는 중…',
+    thisMonth: '이번 달',
     exported: '내보내기 완료: 터치 {taps}건 / 인연 {bonds}건',
     deleteData: '데이터 삭제',
   },
@@ -279,6 +282,7 @@ const DICT = {
     exportData: '导出数据',
     exporting: '正在导出数据…',
     deleting: '正在删除记录…',
+    thisMonth: '本月',
     exported: '导出完成：触摸 {taps} 条 / 羁绊 {bonds} 条',
     deleteData: '删除数据',
   },
@@ -309,11 +313,11 @@ function detect() {
 let lang = detect();
 export const getLang = () => lang;
 
-export function setLang(code) {
+export function setLang(code, persist = true) {
   if (!codes.includes(code)) return;
   lang = code;
   try {
-    localStorage.setItem(KEY, code);
+    if (persist) localStorage.setItem(KEY, code);
   } catch {
     /* 保存できなくても動作する */
   }
