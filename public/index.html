@@ -33,6 +33,11 @@
     <h1>Cafe Timer</h1>
     <p data-i18n="loginText"></p>
     <button id="login-btn" class="primary" data-i18n="loginBtn"></button>
+    <div class="login-links">
+      <div id="login-lang"></div>
+      <button id="about-btn" class="ghost" data-i18n="docAbout"></button>
+      <a id="site-link" href="https://rabbit1.cc" target="_blank" rel="noopener noreferrer" data-i18n="officialSite"></a>
+    </div>
   </main>
 
   <div id="app" hidden>
@@ -56,6 +61,20 @@
   </div>
 
   <dialog id="menu"><div id="menu-body"></div></dialog>
+
+  <dialog id="about">
+    <div id="about-body" class="doc"></div>
+    <div class="confirm-actions"><button id="about-close" class="primary" data-i18n="close"></button></div>
+  </dialog>
+
+  <dialog id="update">
+    <h2 data-i18n="updateTitle"></h2>
+    <div id="update-body" class="doc"></div>
+    <div class="update-foot">
+      <label><input type="checkbox" id="update-hide"><span data-i18n="updateHide"></span></label>
+      <button id="update-ok" class="primary" data-i18n="ok"></button>
+    </div>
+  </dialog>
 
   <dialog id="confirm">
     <p id="confirm-msg"></p>

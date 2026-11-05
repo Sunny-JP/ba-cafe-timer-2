@@ -4,9 +4,10 @@ import { ApiError, api } from "./api.js";
 import { applyStatic, getLang, setLang, t } from "./i18n.js";
 import { disablePush, enablePush, pushEnabled, pushSupported, showForegroundNotifications } from "./push.js";
 import { BOND_EXP, BOND_MAX, CHARACTERS } from "../data/gifts.js";
-import { ensureGameData } from "./gamedata.js";
+import { clearGameDataCache, ensureGameData } from "./gamedata.js";
 import { logicalMonth, nextMonth, prevMonth, uuidv7 } from "./time.js";
-import { DEFAULT_ACCENT, MODES, WEEKDAYS, bondRecords, dayCounts, heatLevel, icon, renderBond, renderCalendar, renderDoc, renderMenu, renderSettings, renderTimer, tick } from "./views.js";
+import { DEFAULT_ACCENT, MODES, WEEKDAYS, bondRecords, dayCounts, heatLevel, icon, langPicker, loader, renderBond, renderCalendar, renderDoc, renderLogList, renderMenu, renderSettings, renderTimer, renderUpdateNotice, tick } from "./views.js";
+import { UPDATE_LOGS } from "./updates.js";
 
 // CALENDAR_LIMITS.MIN: 旧実装の new Date(2025, 12, 1) は 2026-01-01。意図の確認待ち(設計書 §15)
 const CAL_MIN = "2026-01";
@@ -93,6 +94,10 @@ const state = {
   calMonth: logicalMonth(Date.now()),
   calTaps: [],
   calLoading: false,
+  bondReady: false, // 絆の記録とゲームデータを読み終えたか (絆の画面はそれまで読み込み表示)
+  deferredLoading: false,
+  loading: false, // ログイン直後のデータ取得中。中身が空の画面の代わりに読み込み表示を出す
+  pending: new Set(), // 処理中のボタン ("tap" / "ticket1" / "ticket2")。ラベルを Loading… にして無効にする
   selectedDay: null,
   pushSupported: pushSupported(),
   pushOn: pushEnabled(),
@@ -105,7 +110,7 @@ function render(animate = false) {
   state.calAtMax = state.calMonth >= logicalMonth(Date.now());
   // 横長の画面ではタイマーとカレンダーを並べて表示する(カレンダーのタブは隠れる)
   const tab = wide.matches && state.tab === "calendar" ? "timer" : state.tab;
-  view.innerHTML = tab === "timer" && wide.matches ? `<div class="cols"><div>${renderTimer(state)}</div><div>${renderCalendar(state)}</div></div>` : { timer: renderTimer, calendar: renderCalendar, bond: renderBond, settings: renderSettings, doc: renderDoc }[tab](state);
+  view.innerHTML = state.loading ? loader() : tab === "timer" && wide.matches ? `<div class="cols"><div>${renderTimer(state)}</div><div>${renderCalendar(state)}</div></div>` : { timer: renderTimer, calendar: renderCalendar, bond: renderBond, settings: renderSettings, doc: renderDoc }[tab](state);
   if ($("#menu").open) renderMenuBody();
   tick(view);
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", b.dataset.tab === tab);
@@ -334,14 +339,20 @@ function saveCalendarImage() {
   const pad = 24;
   const top = 120;
   const W = cell * 7 + pad * 2;
-  const H = top + cell * rows + pad;
+  const foot = 64; // 下の文言の分
+  const H = top + cell * rows + foot;
   const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
+  // 出力は 1500x1500 (1:1) に固定。内容は縦横の収まる倍率で拡大し、中央に置く
+  const SIZE = 1500;
+  canvas.width = SIZE;
+  canvas.height = SIZE;
   const c = canvas.getContext("2d");
   const font = '"Noto Sans", "Noto Sans JP", sans-serif';
   c.fillStyle = css("--surface");
-  c.fillRect(0, 0, W, H);
+  c.fillRect(0, 0, SIZE, SIZE);
+  const scale = Math.min(SIZE / W, SIZE / H);
+  c.translate((SIZE - W * scale) / 2, (SIZE - H * scale) / 2);
+  c.scale(scale, scale);
   c.textAlign = "center";
   c.fillStyle = css("--on-surface");
   c.font = `500 44px ${font}`;
@@ -357,22 +368,34 @@ function saveCalendarImage() {
     const lv = heatLevel(n);
     c.fillStyle = css("--container");
     c.beginPath();
-    c.roundRect(x, yy, cell - 8, cell - 8, 12);
+    // アプリ内と同じ、右上が斜めに欠けた形
+    const s = cell - 8;
+    const cut = 16;
+    c.moveTo(x, yy);
+    c.lineTo(x + s - cut, yy);
+    c.lineTo(x + s, yy + cut);
+    c.lineTo(x + s, yy + s);
+    c.lineTo(x, yy + s);
+    c.closePath();
     c.fill();
-    c.globalAlpha = lv / 8;
+    c.globalAlpha = lv * 0.08; // アプリ内と同じ: primary を 8% ずつ重ねる
     c.fillStyle = css("--primary");
     c.fill();
     c.globalAlpha = 1;
-    c.fillStyle = css(lv >= 5 ? "--on-primary" : "--on-surface");
+    c.fillStyle = css("--on-surface"); // 文字色は全段階で通常の文字色
     c.textAlign = "left";
-    c.font = `400 22px ${font}`;
+    c.font = `500 22px ${font}`;
     c.fillText(String(d), x + 10, yy + 30);
     if (n) {
       c.textAlign = "right";
-      c.font = `500 40px ${font}`;
+      c.font = `700 40px ${font}`;
       c.fillText(String(n), x + cell - 18, yy + cell - 22);
     }
   }
+  c.textAlign = "center";
+  c.fillStyle = css("--on-variant");
+  c.font = `500 20px ${font}`;
+  c.fillText("My Tap History by Cafe Timer", W / 2, H - 26);
   canvas.toBlob((blob) => {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -411,12 +434,25 @@ async function fetchDocs(lang) {
     .catch(() => document.createDocumentFragment());
   return docCache[lang];
 }
+// 変更履歴の印 (<ul class="log" data-update-log>) には js/updates.js の内容を差し込む
+const withUpdateLog = (html) => html.replace(/<ul class="log" data-update-log(?:="")?><\/ul>/, () => renderLogList());
 async function loadDoc(id) {
   const lang = getLang();
   const own = (await fetchDocs(lang)).querySelector(`#${id}`);
-  if (own) return own.innerHTML;
+  if (own) return withUpdateLog(own.innerHTML);
   const ja = (await fetchDocs("ja")).querySelector(`#${id}`);
-  return `<p class="note info">${t("docFallback")}</p>${ja?.innerHTML ?? ""}`;
+  return `<p class="note info">${t("docFallback")}</p>${withUpdateLog(ja?.innerHTML ?? "")}`;
+}
+
+// 新しい更新情報があるとき、アップデートのお知らせを出す。「今後表示しない」にした id は出さない
+let updateShown = false;
+function showUpdateNotice() {
+  const latest = UPDATE_LOGS[0];
+  if (updateShown || !latest || store.get("seenUpdate", "") === latest.id) return;
+  updateShown = true;
+  $("#update-body").innerHTML = renderUpdateNotice();
+  $("#update-hide").checked = false;
+  $("#update").showModal();
 }
 
 function show(screen) {
@@ -434,24 +470,39 @@ async function guarded(fn) {
   }
 }
 
+// タイマー(と当月のカレンダー)に要る分だけ先に読んで表示し、絆とゲームデータは続けて裏で読む
 async function loadAll() {
-  // 絆EXP表・キャラ・贈物は public/ に置かず、ログイン後にサーバーから取得する (描画の前に必要)
-  if (!(await guarded(async () => (await ensureGameData(), true)))) return;
-  state.bondChar ??= store.get(
-    "char",
-    CHARACTERS[0].key,
-    CHARACTERS.map((c) => c.key),
-  );
   const data = await guarded(() => api.bootstrap(logicalMonth(Date.now())));
   if (!data) return;
   Object.assign(state, {
     profile: data.profile,
     lastTap: data.last_tap,
     monthTaps: data.taps,
-    relationship: data.relationship,
     calMonth: data.month,
     calTaps: data.taps,
+    loading: false,
   });
+  render();
+  loadDeferred();
+  showUpdateNotice();
+}
+
+// 絆の記録・EXP表・キャラ・贈物。サーバーから取得し、保存済みのゲームデータがあればすぐ使う (js/gamedata.js)
+async function loadDeferred() {
+  state.deferredLoading = true;
+  const rel = await guarded(async () => {
+    const [r] = await Promise.all([api.relationship(), ensureGameData({ onUpdate: () => render() })]);
+    return r;
+  });
+  state.deferredLoading = false;
+  if (!rel) return;
+  state.relationship = rel.relationship;
+  state.bondChar ??= store.get(
+    "char",
+    CHARACTERS[0].key,
+    CHARACTERS.map((c) => c.key),
+  );
+  state.bondReady = true;
   render();
 }
 
@@ -499,9 +550,18 @@ async function flushPendingTaps() {
   }
 }
 
-// タップした手応え: 最低限の表示時間を持つ処理中表示
-const TAP_MIN_BUSY = 600;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// ボタンを処理中表示(Loading…・無効)にして fn を実行する。処理中の連打は無視する
+async function withPending(key, fn) {
+  if (state.pending.has(key)) return;
+  state.pending.add(key);
+  render();
+  try {
+    await fn();
+  } finally {
+    state.pending.delete(key);
+    render();
+  }
+}
 
 // タップを記録する。記録できた(または端末に保存した)ら true
 async function recordTap() {
@@ -539,18 +599,8 @@ async function recordTap() {
 }
 
 const actions = {
-  async tap() {
-    if ($("#busy").open) return; // 処理中の連打は無視
-    busy.show(t("tapping"), 1);
-    const started = Date.now();
-    try {
-      await recordTap();
-    } finally {
-      await sleep(Math.max(0, TAP_MIN_BUSY - (Date.now() - started)));
-      busy.hide();
-    }
-  },
-  "ticket-use": (b) => saveProfile({ [`ticket${b.dataset.n}_time`]: new Date().toISOString() }),
+  tap: () => withPending("tap", recordTap),
+  "ticket-use": (b) => withPending(`ticket${b.dataset.n}`, () => saveProfile({ [`ticket${b.dataset.n}_time`]: new Date().toISOString() })),
   "dd-toggle"(b) {
     const list = b.nextElementSibling;
     const open = !list.classList.contains("open");
@@ -572,9 +622,11 @@ const actions = {
     } else if (field === "lang") {
       setLang(value);
       applyTheme();
+      renderLoginLang();
+      if ($("#about").open) loadDoc("about").then((html) => ($("#about-body").innerHTML = html));
       (state.tab === "doc" ? loadDoc(state.doc) : Promise.resolve(null)).then((html) => {
         if (html !== null) state.docHtml = html;
-        render();
+        if (state.user) render(); // ログイン前は描画する画面がない
       });
     }
   },
@@ -603,14 +655,14 @@ const actions = {
       render();
     }
   },
-  async push() {
-    await guarded(async () => {
-      if (state.pushOn) await disablePush();
-      else await enablePush();
-      state.pushOn = pushEnabled();
-    });
-    render();
-  },
+  push: () =>
+    withPending("push", () =>
+      guarded(async () => {
+        if (state.pushOn) await disablePush();
+        else await enablePush();
+        state.pushOn = pushEnabled();
+      }),
+    ),
   async doc(b) {
     state.doc = b.dataset.doc;
     state.docHtml = await loadDoc(state.doc);
@@ -673,7 +725,17 @@ const closeDropdowns = () => {
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".dd")) closeDropdowns();
   const b = e.target.closest("[data-act]");
-  if (b && !b.disabled) actions[b.dataset.act]?.(b);
+  if (!b || b.disabled) return;
+  const { act, n } = b.dataset;
+  actions[act]?.(b);
+  // 押した結果で描き直されたボタンも、沈んだ状態からふわっと戻す
+  if (!b.isConnected) {
+    const again = document.querySelector(`[data-act="${act}"]${n ? `[data-n="${n}"]` : ""}`);
+    if (again) {
+      again.classList.add("rebound");
+      again.addEventListener("animationend", () => again.classList.remove("rebound"), { once: true });
+    }
+  }
 });
 
 $("#menu-btn").innerHTML = icon("menu");
@@ -691,6 +753,20 @@ function closeOnOutsideClick(dialog) {
 }
 closeOnOutsideClick($("#menu"));
 closeOnOutsideClick($("#confirm"));
+closeOnOutsideClick($("#about"));
+$("#update-ok").addEventListener("click", () => {
+  if ($("#update-hide").checked) store.set("seenUpdate", UPDATE_LOGS[0].id);
+  $("#update").close();
+});
+
+// ログイン前の画面: 言語の選択と About
+const renderLoginLang = () => ($("#login-lang").innerHTML = langPicker(getLang()));
+renderLoginLang();
+$("#about-btn").addEventListener("click", async () => {
+  $("#about-body").innerHTML = await loadDoc("about");
+  $("#about").showModal();
+});
+$("#about-close").addEventListener("click", () => $("#about").close());
 dark.addEventListener("change", applyTheme);
 wide.addEventListener("change", () => render(true));
 
@@ -765,6 +841,7 @@ document.querySelector("nav").addEventListener("click", (e) => {
   if (state.tab === b.dataset.tab) return;
   state.tab = b.dataset.tab;
   render(true);
+  if (!state.bondReady && !state.deferredLoading) loadDeferred(); // 裏の読み込みが失敗していたときのやり直し
 });
 
 $("#login-btn").addEventListener("click", () => guarded(login));
@@ -783,10 +860,23 @@ setInterval(() => tick(view), 1000);
 
 onUser((user) => {
   state.user = user;
-  if (!user) return show("login");
+  if (!user) {
+    // ログアウト(失効を含む): 端末のゲームデータと、前のユーザーの絆の記録を残さない
+    clearGameDataCache();
+    Object.assign(state, { relationship: [], bondReady: false, deferredLoading: false });
+    return show("login");
+  }
   show("app");
   showForegroundNotifications();
-  flushPendingTaps().then(loadAll);
+  state.loading = true;
+  render();
+  flushPendingTaps()
+    .then(loadAll)
+    .finally(() => {
+      // 取得に失敗した場合も、読み込み表示のまま止まらないようにする
+      state.loading = false;
+      render();
+    });
 });
 
 if ("serviceWorker" in navigator && !pushEnabled()) {

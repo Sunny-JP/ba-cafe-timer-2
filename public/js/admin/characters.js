@@ -96,7 +96,7 @@ document.addEventListener('click', async (e) => {
 
 initAdminPage('/admin/characters', async () => {
   try {
-    await ensureGameData(); // キャラ・贈物はログイン後にサーバーから取得する
+    await ensureGameData({ fresh: true }); // キャラ・贈物はログイン後にサーバーから取得する
     catalog = await api.catalog();
     applyCatalog(catalog);
   } catch (e) {

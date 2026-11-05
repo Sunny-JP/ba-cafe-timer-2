@@ -35,6 +35,9 @@ h3 { font-size: .9375rem; font-weight: 500; margin-bottom: 4px; }
 ul.plain { list-style: none; margin: 0; padding: 0; }
 ul.plain li { padding: 10px 0; border-bottom: 1px solid var(--outline); }
 ul.plain li:last-child { border: 0; }
+/* その日のタップ時刻は横に並べて一行で見せる (はみ出すときだけ横スクロール) */
+ul.taps-row { display: flex; gap: 4px 14px; overflow-x: auto; font-variant-numeric: tabular-nums; }
+ul.taps-row li { flex: none; padding: 0; border: 0; white-space: nowrap; }
 strong { font-weight: 500; }
 
 .appbar {
@@ -165,6 +168,9 @@ hr { border: 0; border-top: 1px solid var(--outline); margin: 12px 0; }
 }
 .menu-item:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
 .menu-item.danger { color: var(--error); }
+.menu-text { display: grid; line-height: 1.3; }
+.menu-text small { font-size: .75rem; font-weight: 400; color: var(--on-variant); }
+.menu-item:has(.menu-text) { height: auto; min-height: 52px; padding-block: 6px; }
 .menu-title { padding: 0 12px; margin: 4px 0 8px; color: var(--on-variant); font-size: .75rem; }
 .hint { padding: 0 12px 8px; }
 .field { padding: 8px 12px 0; }
@@ -283,8 +289,11 @@ hr { margin: 20px 0; }
 
 /* ---- トランジション (短く控えめに: 100〜200ms) ---- */
 body { transition: background-color .2s, color .2s; }
-button { transition: background-color .15s, color .15s, transform .1s, opacity .15s; }
-button:active:not(:disabled) { transform: scale(.97); }
+button { transition: background-color .15s, color .15s, transform .18s ease-out, opacity .15s; }
+button:active:not(:disabled) { transform: translateY(2px) scale(.96); transition-duration: .04s; }
+/* 押した結果で画面が描き直されてもボタンが戻る動きを見せる (app.js の click 処理が付ける) */
+@keyframes rebound { from { transform: translateY(2px) scale(.96); } }
+button.rebound { animation: rebound .22s ease-out; }
 .slot, .day { transition: background-color .2s, color .2s; }
 
 /* タブ・月の切り替え */
@@ -429,6 +438,8 @@ input[type="color"] { height: 32px; }
 
 /* ---- テキストは選択・コピーできない (入力欄は除く) ---- */
 body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* スマホでタップしたときの青いハイライトを出さない */
+* { -webkit-tap-highlight-color: transparent; }
 input, textarea { -webkit-user-select: text; user-select: text; }
 img, svg { -webkit-user-drag: none; }
 
@@ -515,7 +526,8 @@ html { overflow-x: clip; }
 .doc .note.warn { background: color-mix(in srgb, var(--error) 14%, transparent); }
 .doc .log { list-style: none; padding: 0; max-height: 240px; overflow-y: auto; }
 .doc .log li { display: flex; gap: 12px; font-size: .875rem; }
-.doc .log span { flex: none; width: 5.5em; color: var(--on-variant); }
+.doc .log span { flex: none; width: 6.5em; color: var(--on-variant); font-variant-numeric: tabular-nums; }
+.doc .log small { display: block; margin-top: 2px; font-size: .8125rem; }
 
 /* ---- 閉じるボタンは右下に常時表示 ---- */
 
@@ -656,3 +668,47 @@ button.home:hover:not(:disabled) { background: transparent; }
 
 /* ---- ピンチ・ダブルタップによる拡大を無効化 (スクロールは可) ---- */
 html { touch-action: pan-x pan-y; }
+
+/* ---- ログイン前の画面: 言語・About・公式サイト ---- */
+.login-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; margin-top: 8px; }
+.login-links a { color: var(--primary); font-size: .875rem; }
+dialog#about { padding: 24px 20px; overflow-y: auto; }
+dialog#about .confirm-actions { margin-top: 16px; }
+
+/* ---- アップデートのお知らせ ---- */
+dialog#update { width: min(92vw, 400px); padding: 0; }
+#update h2 { margin: 0; padding: 16px 20px 12px; font-size: 1rem; border-bottom: 1px solid var(--outline); }
+#update-body { padding: 12px 20px; font-size: .875rem; }
+#update-body .sub { margin: 0; }
+.update-main { margin: 4px 0 0; font-weight: 700; line-height: 1.5; }
+/* 以前の項目は、一覧の中だけでスクロールさせる */
+#update-body .update-rest { max-height: 26vh; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--outline); overflow-y: auto; }
+.update-foot { display: grid; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--outline); }
+.update-foot label { display: flex; align-items: center; gap: 8px; font-size: .8125rem; color: var(--on-variant); }
+#update button.primary { width: 100%; height: 44px; border-radius: 22px; clip-path: none; }
+
+/* ---- PC (横長の画面): 幅は程よい大きさまでにして、縦はスクロールしない範囲に収める ---- */
+@media (min-width: 900px) and (orientation: landscape) {
+  :root { --cal-w: clamp(440px, calc((100dvh - 470px) * 1.06 + 48px), 700px); --w: calc(560px + 72px + var(--cal-w) + 48px); }
+  #view { padding-block: 4px 8px; }
+  /* 左のタイマーは最大 560px、右のカレンダーは1日の縦横比 (1 : 1.1) を保てる幅 (画面の高さで決まる) にして中央に寄せる */
+  .cols { grid-template-columns: minmax(0, 560px) var(--cal-w); justify-content: center; gap: 72px; }
+  .block { padding: 10px 0; gap: 12px; }
+  .block + .block { margin-top: 8px; }
+  .slot { aspect-ratio: 7 / 2.4; }
+  .cal-head { margin-bottom: 0; }
+  .cal { gap: 8px; margin-top: 0; }
+  .cal em { padding: 4px 0; }
+}
+
+/* 絆の画面: タイマー画面と同じ最大幅のまま、入力側は細めにしてグラフを大きく (高さは画面に収まる範囲) */
+@media (min-width: 900px) and (orientation: landscape) {
+  .cols.bond-cols { grid-template-columns: minmax(0, 440px) minmax(0, 1fr); } /* 全体の幅はタイマー画面と同じ (--w) */
+  .bond-cols .chart { aspect-ratio: auto; height: clamp(320px, calc(100dvh - 300px), 640px); }
+}
+
+/* 縦が低い画面(小さなノートPCなど)は、少し小さめにして収まりやすくする */
+@media (min-width: 900px) and (orientation: landscape) and (max-height: 820px) {
+  :root { --cal-w: clamp(380px, calc((100dvh - 390px) * 1.06 + 48px), 700px); --w: calc(560px + 72px + var(--cal-w) + 48px); }
+  .slot { aspect-ratio: 7 / 2; }
+}

@@ -172,12 +172,12 @@ function validCatalog(body) {
 // ---- ハンドラ ----
 
 const routes = {
-  'GET /api/bootstrap': async ({ drive, env, uid, url }) => {
+  // タイマー画面に必要な分だけ。絆の記録は GET /api/relationship で、画面を出したあとに読む
+  'GET /api/bootstrap': async ({ drive, url }) => {
     const month = url.searchParams.get('month') ?? logicalMonth(Date.now());
     if (!isMonth(month)) throw new HttpError(400, 'month が不正です。');
-    const [profile, taps, items] = await Promise.all([readProfile(drive), readTaps(drive, month), readBonds(drive)]);
-    await syncBondStats(env, uid, items); // 過去にインポートした分の取り込み
-    return { profile, month, taps, last_tap: await lastTap(drive, month, taps), relationship: items.sort(byRecordedDesc) };
+    const [profile, taps] = await Promise.all([readProfile(drive), readTaps(drive, month)]);
+    return { profile, month, taps, last_tap: await lastTap(drive, month, taps) };
   },
 
   'GET /api/taps': async ({ drive, url }) => {
@@ -186,7 +186,7 @@ const routes = {
     return { month, taps: await readTaps(drive, month) };
   },
 
-  'POST /api/taps': async ({ drive, env, uid, body }) => {
+  'POST /api/taps': async ({ drive, env, uid, body, ctx }) => {
     // 再認証待ちで端末に溜めていたタップは、押した時刻と ID を引き継いで保存する(7日以内・未来でないものだけ)
     const queued = typeof body?.id === 'string' && typeof body?.tap_time === 'string' && Number.isFinite(Date.parse(body.tap_time));
     const at = queued ? Date.parse(body.tap_time) : NaN;
@@ -205,7 +205,8 @@ const routes = {
     }
     const tap = { id: queued ? body.id : uuidv7(now), tap_time: new Date(now).toISOString() };
     await drive.write(tapsFile(month), { taps: [...taps, tap].sort((a, b) => (a.tap_time < b.tap_time ? -1 : a.tap_time > b.tap_time ? 1 : 0)) });
-    await bumpStats(env, Object.fromEntries(tapKeys(now).map((k) => [k, 1])));
+    // 統計は応答を待たせず、返したあとに加算する
+    ctx.waitUntil(bumpStats(env, Object.fromEntries(tapKeys(now).map((k) => [k, 1]))));
     if (queued) return { tap, scheduled: false };
 
     // 通知の失敗でタップの記録は失敗させない
@@ -240,7 +241,11 @@ const routes = {
     return { profile };
   },
 
-  'GET /api/relationship': async ({ drive }) => ({ relationship: (await readBonds(drive)).sort(byRecordedDesc) }),
+  'GET /api/relationship': async ({ drive, env, uid, ctx }) => {
+    const items = await readBonds(drive);
+    ctx.waitUntil(syncBondStats(env, uid, [...items])); // 過去にインポートした分の取り込み。応答は待たない
+    return { relationship: items.sort(byRecordedDesc) };
+  },
 
   'POST /api/relationship': async ({ drive, env, uid, body }) => {
     const err = validBond(body);
@@ -289,13 +294,19 @@ const routes = {
   'GET /api/catalog': async ({ env }) => (env.FIREBASE_SERVICE_ACCOUNT ? getCatalog(env) : { characters: [] }),
 
   // ゲームデータ本体。public/ に置かず、ログイン済みのユーザーにだけ配る
-  'GET /api/gamedata': async ({ env }) => ({
-    bondExp: BOND_EXP,
-    gifts: GIFTS,
-    characters: CHARACTERS,
-    names: { category: CATEGORY, gift: GIFT_NAME, student: STUDENT_NAME },
-    catalog: env.FIREBASE_SERVICE_ACCOUNT ? await getCatalog(env) : { characters: [] },
-  }),
+  // version は内容のハッシュ。端末は保存済みの version を ?v= で送り、同じなら本体を省く(unchanged)
+  'GET /api/gamedata': async ({ env, url }) => {
+    const data = {
+      bondExp: BOND_EXP,
+      gifts: GIFTS,
+      characters: CHARACTERS,
+      names: { category: CATEGORY, gift: GIFT_NAME, student: STUDENT_NAME },
+      catalog: env.FIREBASE_SERVICE_ACCOUNT ? await getCatalog(env) : { characters: [] },
+    };
+    const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(JSON.stringify(data)));
+    const version = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    return url.searchParams.get('v') === version ? { version, unchanged: true } : { version, ...data };
+  },
 
   // 管理者かどうかの確認用 (権限チェックは handle() 側で済んでいる)
   'GET /api/admin/me': async () => ({ ok: true }),
@@ -463,7 +474,7 @@ const routes = {
 // Drive を使わないルート
 const NO_DRIVE = new Set(['PUT /api/devices', 'DELETE /api/devices', 'POST /api/auth/drive', 'GET /api/catalog', 'GET /api/gamedata']);
 
-async function handle(request, env) {
+async function handle(request, env, ctx) {
   const url = new URL(request.url);
   const key = `${request.method} ${url.pathname}`;
   const route = routes[key];
@@ -491,7 +502,7 @@ async function handle(request, env) {
     }
   }
   try {
-    return json(await route({ request, env, url, uid, drive, body }));
+    return json(await route({ request, env, ctx, url, uid, drive, body }));
   } catch (e) {
     if (e instanceof DriveError && (e.status === 401 || e.status === 403)) {
       forgetAccessToken(uid); // 失効していたら、次の呼び出しで取り直す
@@ -502,9 +513,9 @@ async function handle(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
-      return await handle(request, env);
+      return await handle(request, env, ctx);
     } catch (e) {
       if (e instanceof HttpError) return json({ error: e.message, code: e.code }, e.status);
       // トークン等を含み得るため、詳細はログに出さない

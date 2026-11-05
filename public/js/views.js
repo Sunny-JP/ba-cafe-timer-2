@@ -1,5 +1,6 @@
 // タイマー / カレンダー / 絆 / メニュー の描画。状態は app.js が持ち、ここは HTML を組み立てるだけ。
 import { t, categoryName, getLang, giftName, studentName, LANGS } from './i18n.js';
+import { UPDATE_LOGS } from './updates.js';
 import { BOND_MAX, CHARACTERS, RATE_COLOR, SPRITE, charName, favoriteGifts } from '../data/gifts.js';
 import {
   TICKET_COOLDOWN,
@@ -44,7 +45,7 @@ export function tick(root, now = Date.now()) {
     const p = (n) => String(n).padStart(2, '0');
     el.textContent = `${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}`;
   }
-  for (const b of root.querySelectorAll('[data-enable-at]')) b.disabled = Number(b.dataset.enableAt) > now;
+  for (const b of root.querySelectorAll('[data-enable-at]')) b.disabled = 'pending' in b.dataset || Number(b.dataset.enableAt) > now;
 }
 
 export function renderTimer(state, now = Date.now()) {
@@ -64,9 +65,10 @@ export function renderTimer(state, now = Date.now()) {
     .map((n) => {
       const t = state.profile[`ticket${n}_time`];
       const ready = t ? Date.parse(t) + TICKET_COOLDOWN : 0;
+      const pending = state.pending.has(`ticket${n}`);
       return `<div>
         <p class="timer indent">${countdown(ready)}</p>
-        <button class="primary wide" data-act="ticket-use" data-n="${n}" data-enable-at="${ready}">Ticket ${n}</button>
+        <button class="primary wide" data-act="ticket-use" data-n="${n}" data-enable-at="${ready}"${pending ? ' data-pending' : ''}>${pending ? 'Wait…' : `Ticket ${n}`}</button>
       </div>`;
     })
     .join('');
@@ -76,7 +78,7 @@ export function renderTimer(state, now = Date.now()) {
       <h2 class="label">Next Tap</h2>
       <p class="big indent">${countdown(nextTap)}</p>
       <ul class="slots">${slots}</ul>
-      <button class="primary wide" data-act="tap" data-enable-at="${nextTap}">Tap</button>
+      <button class="primary wide" data-act="tap" data-enable-at="${nextTap}"${state.pending.has('tap') ? ' data-pending' : ''}>${state.pending.has('tap') ? 'Wait…' : 'Tap'}</button>
     </section>
     <section class="block">
       <h2 class="label">Next Call</h2>
@@ -130,13 +132,12 @@ export function renderCalendar(state) {
       <div class="cal ${calLoading ? 'loading' : ''}">
         ${WEEKDAYS.map((w) => `<em>${w}</em>`).join('')}${cells.join('')}
       </div>
-      <p class="sub note">${t('calNote')}</p>
     </section>
     ${
       selectedDay
         ? `<section class="block"><h2 class="label">${selectedDay} (${dayTaps.length})</h2>
-           <ul class="plain">${
-             dayTaps.map((t) => `<li>${fmtTime(Date.parse(t.tap_time), tz)} <span class="sub">(${fmtTime(Date.parse(t.tap_time), 'Asia/Tokyo')} JST)</span></li>`).join('') ||
+           <ul class="plain taps-row">${
+             dayTaps.map((t) => `<li>${fmtTime(Date.parse(t.tap_time), tz)}</li>`).join('') ||
              `<li class="sub">${t('noRecord')}</li>`
            }</ul></section>`
         : ''
@@ -163,6 +164,39 @@ function dropdown({ field, value, options, large = false }) {
   </div>`;
 }
 
+// ---- 更新情報 (js/updates.js) ----
+
+const pick = (o) => (typeof o === 'string' ? o : (o?.[getLang()] ?? o?.ja ?? ''));
+const logHead = (e) => e.date ?? pick(e.label);
+
+// 日付(または見出し)と本文の並び。コメントがあれば本文の下に小さく出す
+const logItems = (logs) =>
+  logs
+    .map((e) => {
+      const comment = pick(e.comment);
+      return `<li><span>${esc(logHead(e))}</span>${comment ? `<div>${esc(pick(e.content))}<small class="sub">${esc(comment)}</small></div>` : esc(pick(e.content))}</li>`;
+    })
+    .join('');
+
+// 文書(運営者情報)の変更履歴
+export const renderLogList = () => `<ul class="log">${logItems(UPDATE_LOGS)}</ul>`;
+
+// 「アップデートのお知らせ」の中身: いちばん新しいものを大きく、以前のものを下の一覧に
+export function renderUpdateNotice() {
+  const [latest, ...rest] = UPDATE_LOGS;
+  const comment = pick(latest.comment);
+  return `<p class="sub">${esc(logHead(latest))}</p>
+    <p class="update-main">${esc(pick(latest.content))}</p>
+    ${comment ? `<p class="sub">${esc(comment)}</p>` : ''}
+    ${rest.length ? `<ul class="log update-rest">${logItems(rest)}</ul>` : ''}`;
+}
+
+// ログイン前の画面にも置く言語の選択
+export const langPicker = (value) => dropdown({ field: 'lang', value, options: LANGS });
+
+export const loader = () =>
+  `<div class="center loader" role="status"><span class="spinner" aria-hidden="true"></span><p>${t('loading')}</p></div>`;
+
 // ---- 絆 ----
 
 export const bondRecords = (state, key) =>
@@ -179,6 +213,7 @@ function charOptions() {
 }
 
 export function renderBond(state) {
+  if (!state.bondReady) return loader(); // 絆の記録とゲームデータは、タイマーを出したあとに読み込む
   const key = state.bondChar;
   const char = CHARACTERS.find((c) => c.key === key);
   const level = state.bondLevel ?? defaultBondLevel(state, key);
@@ -197,7 +232,7 @@ export function renderBond(state) {
     })
     .join('');
 
-  return `<div class="cols">
+  return `<div class="cols bond-cols">
     <div>
     <form data-form="bond" class="block">
       <h2 class="label">Student</h2>
@@ -320,7 +355,11 @@ export function renderSettings(state) {
       <hr>
       <h3 class="menu-title">${t('notifData')}</h3>
       <div class="menu-list">
-        <button class="menu-item" data-act="push" ${state.pushSupported ? '' : 'disabled'}>${icon('bell')}${t(state.pushOn ? 'pushOn' : 'pushOff')}</button>
+        <button class="menu-item" data-act="push" ${state.pushSupported && !state.pending.has('push') ? '' : 'disabled'}>${icon('bell')}${
+          state.pending.has('push')
+            ? '<span class="menu-text">Wait…</span>'
+            : `<span class="menu-text">${t(state.pushOn ? 'pushTurnOff' : 'pushTurnOn')}<small>${t(state.pushOn ? 'pushStateOn' : 'pushStateOff')}</small></span>`
+        }</button>
         ${state.pushSupported ? '' : `<p class="sub hint">${t('pushUnsupported')}</p>`}
         <label class="menu-item">${icon('upload')}${t('importOld')}<input type="file" accept="application/json" data-form="import" hidden></label>
         <button class="menu-item danger" data-act="delete-account">${icon('trash')}${t('deleteData')}</button>
