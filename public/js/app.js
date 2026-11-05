@@ -395,7 +395,7 @@ function saveCalendarImage() {
   c.textAlign = "center";
   c.fillStyle = css("--on-variant");
   c.font = `500 20px ${font}`;
-  c.fillText("My Tap History by Cafe Timer", W / 2, H - 26);
+  c.fillText("My Tap History by Cafe Timer 2", W / 2, H - 26);
   canvas.toBlob((blob) => {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);

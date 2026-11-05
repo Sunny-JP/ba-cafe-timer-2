@@ -1,46 +1,48 @@
 <!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="robots" content="noindex">
-  <title>タップテスト | Cafe Timer 管理</title>
-  <script>
-    try {
-      const r = document.documentElement, m = localStorage.getItem('ct.mode'), c = localStorage.getItem('ct.accent');
-      if (m === 'light' || m === 'dark') r.dataset.mode = m;
-      if (c && /^#[0-9a-f]{6}$/i.test(c)) r.style.setProperty('--accent', c);
-    } catch {}
-  </script>
-  <link rel="icon" href="/img/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/css/app.css">
-  <link rel="stylesheet" href="/css/admin.css">
-</head>
-<body>
-  <main id="login" class="center" hidden>
-    <h1>Cafe Timer 管理</h1>
-    <button id="login-btn" class="primary">Google でログイン</button>
-  </main>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>タップテスト | Cafe Timer 2 管理</title>
+    <script>
+      try {
+        const r = document.documentElement,
+          m = localStorage.getItem("ct.mode"),
+          c = localStorage.getItem("ct.accent");
+        if (m === "light" || m === "dark") r.dataset.mode = m;
+        if (c && /^#[0-9a-f]{6}$/i.test(c)) r.style.setProperty("--accent", c);
+      } catch {}
+    </script>
+    <link rel="icon" href="/img/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <link rel="stylesheet" href="/css/admin.css" />
+  </head>
+  <body>
+    <main id="login" class="center" hidden>
+      <h1>Cafe Timer 2 管理</h1>
+      <button id="login-btn" class="primary">Google でログイン</button>
+    </main>
 
-  <div id="admin" hidden>
-    <div id="shell"></div>
-    <div id="content" hidden>
-      <h2>タップテスト</h2>
-      <p class="note">タップの記録・統計には一切書き込みません。指定した時刻にタップした場合に何が起きるか(論理月・統計キー・通知予約)を確認します。</p>
-      <div class="row">
-        <label>タップ時刻(空欄なら現在)<input type="datetime-local" id="tap-time" step="60"></label>
-        <button id="run" class="primary">シミュレート</button>
+    <div id="admin" hidden>
+      <div id="shell"></div>
+      <div id="content" hidden>
+        <h2>タップテスト</h2>
+        <p class="note">タップの記録・統計には一切書き込みません。指定した時刻にタップした場合に何が起きるか(論理月・統計キー・通知予約)を確認します。</p>
+        <div class="row">
+          <label>タップ時刻(空欄なら現在)<input type="datetime-local" id="tap-time" step="60" /></label>
+          <button id="run" class="primary">シミュレート</button>
+        </div>
+        <p id="sim-result" class="result"></p>
+        <h2>通知の通し確認</h2>
+        <p class="note">60秒後に、この管理者の端末へ通常のタップ通知を届くよう実際に予約します(cron → FCM の経路の確認)。届くまで最大1〜2分かかります。</p>
+        <div class="row"><button id="queue">60秒後に通知を予約</button></div>
+        <p id="queue-result" class="result"></p>
       </div>
-      <p id="sim-result" class="result"></p>
-      <h2>通知の通し確認</h2>
-      <p class="note">60秒後に、この管理者の端末へ通常のタップ通知を届くよう実際に予約します(cron → FCM の経路の確認)。届くまで最大1〜2分かかります。</p>
-      <div class="row"><button id="queue">60秒後に通知を予約</button></div>
-      <p id="queue-result" class="result"></p>
     </div>
-  </div>
 
-  <div id="toast" role="status" hidden></div>
-  <script type="module" src="/js/admin/taptest.js"></script>
-</body>
+    <div id="toast" role="status" hidden></div>
+    <script type="module" src="/js/admin/taptest.js"></script>
+  </body>
 </html>

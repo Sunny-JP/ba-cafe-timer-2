@@ -1,4 +1,4 @@
-# Cafe Timer
+# Cafe Timer 2
 
 ブルーアーカイブの「カフェ」のタップ間隔・チケットを管理するタイマー、絆ランクの記録、通知を提供する Web アプリです(PWA)。
 Cloudflare Workers(API と静的ファイル配信)+ Firebase(認証・通知)+ Google Drive(ユーザーのデータ保存)で動きます。

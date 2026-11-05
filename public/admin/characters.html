@@ -1,51 +1,53 @@
 <!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="robots" content="noindex">
-  <title>キャラクター追加 | Cafe Timer 管理</title>
-  <script>
-    try {
-      const r = document.documentElement, m = localStorage.getItem('ct.mode'), c = localStorage.getItem('ct.accent');
-      if (m === 'light' || m === 'dark') r.dataset.mode = m;
-      if (c && /^#[0-9a-f]{6}$/i.test(c)) r.style.setProperty('--accent', c);
-    } catch {}
-  </script>
-  <link rel="icon" href="/img/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/css/app.css">
-  <link rel="stylesheet" href="/css/admin.css">
-</head>
-<body>
-  <main id="login" class="center" hidden>
-    <h1>Cafe Timer 管理</h1>
-    <button id="login-btn" class="primary">Google でログイン</button>
-  </main>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>キャラクター追加 | Cafe Timer 2 管理</title>
+    <script>
+      try {
+        const r = document.documentElement,
+          m = localStorage.getItem("ct.mode"),
+          c = localStorage.getItem("ct.accent");
+        if (m === "light" || m === "dark") r.dataset.mode = m;
+        if (c && /^#[0-9a-f]{6}$/i.test(c)) r.style.setProperty("--accent", c);
+      } catch {}
+    </script>
+    <link rel="icon" href="/img/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <link rel="stylesheet" href="/css/admin.css" />
+  </head>
+  <body>
+    <main id="login" class="center" hidden>
+      <h1>Cafe Timer 2 管理</h1>
+      <button id="login-btn" class="primary">Google でログイン</button>
+    </main>
 
-  <div id="admin" hidden>
-    <div id="shell"></div>
-    <div id="content" hidden>
-      <h2>キャラクターの追加</h2>
-      <p class="note">好きな贈り物をタップして効果を選びます(タップするたびに 未選択 → 通常・中 → 通常・大 → 通常・特大 → 高級・大 → 高級・特大 → 未選択)。1つ以上選ぶ必要があります。</p>
-      <form id="char-form" class="row">
-        <label>key (英小文字・数字・_)<input name="key" required pattern="[a-z0-9_]{1,64}" placeholder="new_student"></label>
-        <label>名前 (日本語)<input name="name" required maxlength="64"></label>
-        <label>名前 (English)<input name="en" required maxlength="64"></label>
-        <label>名前 (中文・任意)<input name="zh" maxlength="64"></label>
-        <label>名前 (한국어・任意)<input name="ko" maxlength="64"></label>
-        <button class="primary">追加</button>
-        <span id="picked-count" class="note"></span>
-      </form>
-      <div class="picker" id="picker"></div>
-      <h2>現在の設定 (全キャラクター)</h2>
-      <p class="note">組み込みのキャラと、ここで追加したキャラ(「追加」バッジ)を表示します。削除できるのは追加したキャラだけです。効果の略記: 通=通常 / 高=高級、中・大・特=効果の大きさ。中国語・韓国語が未入力のキャラは、アプリでは英語名を表示します。</p>
-      <div class="row"><input id="char-filter" type="search" placeholder="key・名前で絞り込み" style="flex: 1 1 200px"><span id="char-count" class="note"></span></div>
-      <ul class="list charlist" id="char-list"></ul>
+    <div id="admin" hidden>
+      <div id="shell"></div>
+      <div id="content" hidden>
+        <h2>キャラクターの追加</h2>
+        <p class="note">好きな贈り物をタップして効果を選びます(タップするたびに 未選択 → 通常・中 → 通常・大 → 通常・特大 → 高級・大 → 高級・特大 → 未選択)。1つ以上選ぶ必要があります。</p>
+        <form id="char-form" class="row">
+          <label>key (英小文字・数字・_)<input name="key" required pattern="[a-z0-9_]{1,64}" placeholder="new_student" /></label>
+          <label>名前 (日本語)<input name="name" required maxlength="64" /></label>
+          <label>名前 (English)<input name="en" required maxlength="64" /></label>
+          <label>名前 (中文・任意)<input name="zh" maxlength="64" /></label>
+          <label>名前 (한국어・任意)<input name="ko" maxlength="64" /></label>
+          <button class="primary">追加</button>
+          <span id="picked-count" class="note"></span>
+        </form>
+        <div class="picker" id="picker"></div>
+        <h2>現在の設定 (全キャラクター)</h2>
+        <p class="note">組み込みのキャラと、ここで追加したキャラ(「追加」バッジ)を表示します。削除できるのは追加したキャラだけです。効果の略記: 通=通常 / 高=高級、中・大・特=効果の大きさ。中国語・韓国語が未入力のキャラは、アプリでは英語名を表示します。</p>
+        <div class="row"><input id="char-filter" type="search" placeholder="key・名前で絞り込み" style="flex: 1 1 200px" /><span id="char-count" class="note"></span></div>
+        <ul class="list charlist" id="char-list"></ul>
+      </div>
     </div>
-  </div>
 
-  <div id="toast" role="status" hidden></div>
-  <script type="module" src="/js/admin/characters.js"></script>
-</body>
+    <div id="toast" role="status" hidden></div>
+    <script type="module" src="/js/admin/characters.js"></script>
+  </body>
 </html>

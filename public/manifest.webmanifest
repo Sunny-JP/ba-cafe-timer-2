@@ -1,6 +1,6 @@
 {
-  "name": "Cafe Timer",
-  "short_name": "Cafe Timer",
+  "name": "Cafe Timer 2",
+  "short_name": "Cafe Timer 2",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

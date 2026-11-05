@@ -251,10 +251,10 @@ export const TEXT = {
     zh: `About`,
   },
   "about.p1": {
-    ja: `「Cafe Timer」は、ゲーム『ブルーアーカイブ』のカフェ機能を支援する非公式ファンメイドツールです。<br> 生徒さんのカフェ訪問タイミングを通知でお知らせし、先生方の業務をサポートします。`,
-    en: `"Cafe Timer" is an unofficial fan-made tool that supports the Cafe feature of the game Blue Archive.<br> It notifies you when students can be visited at the cafe and helps Sensei keep track of their routine.`,
-    ko: `「Cafe Timer」는 게임 『블루 아카이브』의 카페 기능을 지원하는 비공식 팬메이드 도구입니다.<br> 학생의 카페 방문 타이밍을 알림으로 알려 드려 선생님의 일과를 돕습니다.`,
-    zh: `「Cafe Timer」是辅助游戏《蔚蓝档案》咖啡厅功能的非官方粉丝制作工具。<br> 它会通过通知告知学生到访咖啡厅的时机，协助老师完成日常事务。`,
+    ja: `「Cafe Timer 2」は、ゲーム『ブルーアーカイブ』のカフェ機能を支援する非公式ファンメイドツールです。<br> 生徒さんのカフェ訪問タイミングを通知でお知らせし、先生方の業務をサポートします。`,
+    en: `"Cafe Timer 2" is an unofficial fan-made tool that supports the Cafe feature of the game Blue Archive.<br> It notifies you when students can be visited at the cafe and helps Sensei keep track of their routine.`,
+    ko: `「Cafe Timer 2」는 게임 『블루 아카이브』의 카페 기능을 지원하는 비공식 팬메이드 도구입니다.<br> 학생의 카페 방문 타이밍을 알림으로 알려 드려 선생님의 일과를 돕습니다.`,
+    zh: `「Cafe Timer 2」是辅助游戏《蔚蓝档案》咖啡厅功能的非官方粉丝制作工具。<br> 它会通过通知告知学生到访咖啡厅的时机，协助老师完成日常事务。`,
   },
   "about.h1": {
     ja: `主な機能`,
@@ -348,7 +348,7 @@ export const TEXT = {
   },
   "guide.h1": {
     ja: `カフェタイマーの使い方`,
-    en: `Using Cafe Timer`,
+    en: `How to Use Cafe Timer`,
     ko: `카페 타이머 사용법`,
     zh: `咖啡厅计时器的使用方法`,
   },
@@ -842,10 +842,10 @@ export const TEXT = {
     zh: `致谢`,
   },
   "operator.p2": {
-    ja: `ブルーアーカイブ(ブルアカ)攻略 Wiki 様(絆ランクテーブル・生徒さんごとの贈り物対応付けに使用)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a>`,
-    en: `Blue Archive Strategy Wiki (used for the bond rank table and student gift mappings)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a>`,
-    ko: `블루 아카이브 공략 Wiki 님(인연 랭크 표·학생별 선물 대응에 사용)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a>`,
-    zh: `蔚蓝档案攻略 Wiki（用于羁绊等级表及各学生礼物对应）<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a>`,
+    ja: `ブルーアーカイブ(ブルアカ)攻略 Wiki 様(絆ランクテーブル・生徒さんごとの贈り物対応付けに使用)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB(生徒さんの名前の翻訳などに使用)<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
+    en: `Blue Archive Strategy Wiki (used for the bond rank table and student gift mappings)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB (used for student name translations and more)<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
+    ko: `블루 아카이브 공략 Wiki 님(인연 랭크 표·학생별 선물 대응에 사용)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB(학생 이름 번역 등에 사용)<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
+    zh: `蔚蓝档案攻略 Wiki（用于羁绊等级表及各学生礼物对应）<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB（用于学生姓名翻译等）<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
   },
   "operator.h3": {
     ja: `変更履歴`,
