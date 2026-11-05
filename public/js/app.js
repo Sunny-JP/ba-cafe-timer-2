@@ -421,27 +421,14 @@ function applyTheme() {
   $("#theme-btn").setAttribute("aria-label", t(isDark() ? "toLight" : "toDark"));
 }
 
-// 文書は言語ごとのファイル(content.<lang>.html)。訳がない文書は日本語版を注記付きで出す
-const docCache = {};
-async function fetchDocs(lang) {
-  docCache[lang] ??= fetch(lang === "ja" ? "/content.html" : `/content.${lang}.html`)
-    .then((r) => (r.ok ? r.text() : ""))
-    .then((html) => {
-      const tpl = document.createElement("template");
-      tpl.innerHTML = html;
-      return tpl.content;
-    })
-    .catch(() => document.createDocumentFragment());
-  return docCache[lang];
-}
+// 文書は js/docs.js に キー→訳 で言語ごとにまとめてある(表示時に初めて読み込む)
+let docsModule;
+const loadDocs = () => (docsModule ??= import("./docs.js"));
 // 変更履歴の印 (<ul class="log" data-update-log>) には js/updates.js の内容を差し込む
 const withUpdateLog = (html) => html.replace(/<ul class="log" data-update-log(?:="")?><\/ul>/, () => renderLogList());
 async function loadDoc(id) {
-  const lang = getLang();
-  const own = (await fetchDocs(lang)).querySelector(`#${id}`);
-  if (own) return withUpdateLog(own.innerHTML);
-  const ja = (await fetchDocs("ja")).querySelector(`#${id}`);
-  return `<p class="note info">${t("docFallback")}</p>${withUpdateLog(ja?.innerHTML ?? "")}`;
+  const { html, translated } = (await loadDocs()).docHtml(id, getLang());
+  return (translated ? "" : `<p class="note info">${t("docFallback")}</p>`) + withUpdateLog(html);
 }
 
 // 新しい更新情報があるとき、アップデートのお知らせを出す。「今後表示しない」にした id は出さない
@@ -641,6 +628,23 @@ const actions = {
     applyTheme();
     render();
   },
+  "export-data": () =>
+    withPending("export-data", async () => {
+      busy.show(t("exporting"), 1);
+      let data;
+      try {
+        data = await guarded(() => api.exportData());
+      } finally {
+        busy.hide();
+      }
+      if (!data) return;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+      a.download = `cafetimer-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      toast(t("exported", { taps: data.taps.length, bonds: data.relationship.length }));
+    }),
   "cal-prev": () => loadCalendar(prevMonth(state.calMonth)),
   "cal-next": () => loadCalendar(nextMonth(state.calMonth)),
   day(b) {
@@ -649,7 +653,14 @@ const actions = {
   },
   async "bond-del"(b) {
     if (!(await confirmDialog(t("confirmDelBond"), t("del"), true))) return;
-    if (await guarded(() => api.deleteBond(b.dataset.id))) {
+    busy.show(t("deleting"), 1);
+    let ok;
+    try {
+      ok = await guarded(() => api.deleteBond(b.dataset.id));
+    } finally {
+      busy.hide();
+    }
+    if (ok) {
       state.relationship = state.relationship.filter((x) => x.id !== b.dataset.id);
       state.bondLevel = null;
       render();
@@ -730,7 +741,8 @@ document.addEventListener("click", (e) => {
   actions[act]?.(b);
   // 押した結果で描き直されたボタンも、沈んだ状態からふわっと戻す
   if (!b.isConnected) {
-    const again = document.querySelector(`[data-act="${act}"]${n ? `[data-n="${n}"]` : ""}`);
+    const { day } = b.dataset;
+    const again = document.querySelector(`[data-act="${act}"]${n ? `[data-n="${n}"]` : ""}${day ? `[data-day="${day}"]` : ""}`);
     if (again) {
       again.classList.add("rebound");
       again.addEventListener("animationend", () => again.classList.remove("rebound"), { once: true });
@@ -777,8 +789,19 @@ view.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (e.target.dataset.form !== "bond") return;
   const f = new FormData(e.target);
-  const bond = { char_key: f.get("char_key"), bond_level: Number(f.get("bond_level")), recorded_at: f.get("recorded_at") };
-  const data = await guarded(() => api.addBond(bond));
+  const bond = { char_key: state.bondChar, bond_level: Number(f.get("bond_level")), recorded_at: f.get("recorded_at") };
+  // 送信中はボタンを無効にして回転アイコンを出す (再描画すると入力中の値が消えるので、ボタンだけ触る)
+  const btn = e.target.querySelector(".record");
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.add("busy");
+  let data;
+  try {
+    data = await guarded(() => api.addBond(bond));
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove("busy");
+  }
   if (data) {
     state.relationship = [...state.relationship, data.item];
     state.bondLevel = null; // 次の RANK を初期値にする
@@ -800,6 +823,9 @@ document.addEventListener("input", (e) => {
   store.set("accent", state.accent);
   applyTheme();
 });
+
+// 画像がない生徒は、アイコンを出さず名前だけにする (error は伝播しないので capture で受ける)
+document.addEventListener("error", (e) => (e.target.classList?.contains("dd-icon") || e.target.classList?.contains("bond-icon")) && e.target.remove(), true);
 
 document.addEventListener("change", async (e) => {
   const kind = e.target.dataset.form;

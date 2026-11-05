@@ -78,7 +78,8 @@ Cloudflare Workers(API と静的ファイル配信)+ Firebase(認証・通知)+ 
 | `GET` / `POST /api/taps` | タップの取得 / 記録 | 要 |
 | `PUT /api/profile` | チケット時刻・タイムゾーンの保存 | 要 |
 | `GET` / `POST` / `DELETE /api/relationship` | 絆ランクの取得 / 追加 / 削除 | 要 |
-| `POST /api/import` | 旧アプリのデータの取り込み | 要 |
+| `GET /api/export` | データの書き出し(インポート可能な形式) | 要 |
+| `POST /api/import` | データのインポート | 要 |
 | `DELETE /api/account` | Drive 上のデータと通知情報の削除 | 要 |
 | `PUT` / `DELETE /api/devices` | 通知先端末の登録 / 解除 | 不要 |
 | `GET /api/gamedata` | 絆 EXP 表・キャラ・贈り物・各言語の名前(ログイン後に一度取得) | 不要 |

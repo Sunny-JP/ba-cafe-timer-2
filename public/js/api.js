@@ -40,5 +40,6 @@ export const api = {
   adminSaveCatalog: (catalog) => request('PUT', '/api/admin/catalog', catalog, { drive: false }),
   linkDrive: (code) => request('POST', '/api/auth/drive', { code }, { drive: false }),
   deleteAccount: () => request('DELETE', '/api/account'),
+  exportData: () => request('GET', '/api/export'),
   importData: (data) => request('POST', '/api/import', data),
 };

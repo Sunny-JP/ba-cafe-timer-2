@@ -404,7 +404,26 @@ const routes = {
     return { ok: true };
   },
 
-  // 旧データの取り込み。既存 ID を保持し、不正な行・重複は読み飛ばす。
+  // データの書き出し。形式は POST /api/import がそのまま読み込める (doc/インポートファイル仕様.md)。
+  'GET /api/export': async ({ drive }) => {
+    const names = [...(await drive.index()).keys()].filter((n) => /^taps-\d{4}-\d{2}\.json$/.test(n)).sort();
+    const taps = [];
+    for (const n of names) {
+      for (const t of (await drive.read(n, { taps: [] })).taps) taps.push({ id: t.id, tap_time: t.tap_time });
+    }
+    taps.sort((a, b) => (a.tap_time < b.tap_time ? -1 : a.tap_time > b.tap_time ? 1 : 0));
+    const profile = await readProfile(drive);
+    return {
+      schema: 1,
+      taps,
+      relationship: (await readBonds(drive)).map(({ id, char_key, bond_level, recorded_at, created_at, updated_at }) => ({
+        id, char_key, bond_level, recorded_at, created_at, updated_at,
+      })),
+      profile: { ticket1_time: profile.ticket1_time, ticket2_time: profile.ticket2_time },
+    };
+  },
+
+  // データのインポート。既存 ID を保持し、不正な行・重複は読み飛ばす。
   'POST /api/import': async ({ drive, env, uid, body }) => {
     const result = { taps: 0, relationship: 0, skipped: 0, profile: false };
 

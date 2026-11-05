@@ -27,6 +27,7 @@ const ICONS = {
   trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
   logout: 'M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z',
   upload: 'M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z',
+  download: 'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
   chevron: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6-6-6z',
   dropdown: 'M7 10l5 5 5-5z',
   settings: 'M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z',
@@ -146,19 +147,20 @@ export function renderCalendar(state) {
 
 // ---- 独自ドロップダウン (ネイティブの select は使わない) ----
 
-// options: [[value, label], ...]。選択は data-act="dd-pick" data-field data-value で通知する。
+// options: [[value, label, アイコン画像の URL(任意)], ...]。選択は data-act="dd-pick" data-field data-value で通知する。
 // ラベルは文字列、または [本文, 補足] (補足は小さい文字で2行目に出す)
+const ddIcon = (src) => (src ? `<img class="dd-icon" src="${esc(src)}" alt="" loading="lazy" decoding="async">` : '');
 const ddLabel = (l) => (Array.isArray(l) ? `<span class="l1">${esc(l[0])}</span><span class="l2">${esc(l[1])}</span>` : esc(l));
 
 function dropdown({ field, value, options, large = false }) {
   const current = options.find(([v]) => v === value) ?? options[0];
   return `<div class="dd${large ? ' lg' : ''}">
     <button type="button" class="dd-btn" data-act="dd-toggle" aria-haspopup="listbox" aria-expanded="false">
-      <span>${ddLabel(current[1])}</span>${icon('dropdown', large ? 28 : 18)}
+      <span>${large ? '' : ddIcon(current[2])}${ddLabel(current[1])}</span>${icon('dropdown', large ? 28 : 18)}
     </button>
     <ul class="dd-list" role="listbox">
       ${options
-        .map(([v, l]) => `<li><button type="button" role="option" aria-selected="${v === current[0]}" data-act="dd-pick" data-field="${field}" data-value="${esc(v)}">${ddLabel(l)}</button></li>`)
+        .map(([v, l, img]) => `<li><button type="button" role="option" aria-selected="${v === current[0]}" data-act="dd-pick" data-field="${field}" data-value="${esc(v)}">${ddIcon(img)}${ddLabel(l)}</button></li>`)
         .join('')}
     </ul>
   </div>`;
@@ -205,9 +207,12 @@ export const bondRecords = (state, key) =>
 export const defaultBondLevel = (state, key) =>
   Math.min(BOND_MAX, (bondRecords(state, key)[0]?.bond_level ?? 0) + 1);
 
+// 生徒のアイコン。画像は img/students/<key>.webp に置く(なければ表示しない)
+export const charIcon = (key) => `/img/students/${encodeURIComponent(key)}.webp`;
+
 // 生徒の選択肢。日本語は五十音順(データ順)、他言語は表示名の辞書順に並べる
 function charOptions() {
-  const list = CHARACTERS.map((c) => [c.key, studentName(c.name)]);
+  const list = CHARACTERS.map((c) => [c.key, studentName(c.name), charIcon(c.key)]);
   const lang = getLang();
   return lang === 'ja' ? list : list.sort((a, b) => a[1].localeCompare(b[1], lang));
 }
@@ -236,11 +241,16 @@ export function renderBond(state) {
     <div>
     <form data-form="bond" class="block">
       <h2 class="label">Student</h2>
-      ${dropdown({ field: 'char', value: key, large: true, options: charOptions() })}
-      <div class="bond-row">
-        <label>Rank <input name="bond_level" type="number" inputmode="numeric" min="1" max="${BOND_MAX}" value="${level}" required></label>
-        <label>Date <input name="recorded_at" type="date" value="${esc(date)}" required></label>
-        <button class="primary record">Record +</button>
+      <div class="bond-head">
+        <img class="bond-icon" src="${esc(charIcon(key))}" alt="" decoding="async">
+        <div class="bond-fields">
+          ${dropdown({ field: 'char', value: key, large: true, options: charOptions() })}
+          <div class="bond-row">
+            <label>Rank <input name="bond_level" type="number" inputmode="numeric" min="1" max="${BOND_MAX}" value="${level}" required></label>
+            <label>Date <input name="recorded_at" type="date" value="${esc(date)}" required></label>
+            <button class="primary record" aria-label="Record">+</button>
+          </div>
+        </div>
       </div>
     </form>
     <section class="block">
@@ -362,6 +372,7 @@ export function renderSettings(state) {
         }</button>
         ${state.pushSupported ? '' : `<p class="sub hint">${t('pushUnsupported')}</p>`}
         <label class="menu-item">${icon('upload')}${t('importOld')}<input type="file" accept="application/json" data-form="import" hidden></label>
+        <button class="menu-item" data-act="export-data" ${state.pending.has('export-data') ? 'disabled' : ''}>${icon('download')}${t('exportData')}</button>
         <button class="menu-item danger" data-act="delete-account">${icon('trash')}${t('deleteData')}</button>
         <button class="menu-item" data-act="logout">${icon('logout')}${t('logout')}</button>
       </div>

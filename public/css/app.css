@@ -226,6 +226,7 @@ button.primary:disabled { background: color-mix(in srgb, var(--on-surface) 12%, 
 .day b { align-self: flex-end; font-size: 1.125rem; font-weight: 500; }
 .day.sel { outline: 2px solid var(--on-surface); outline-offset: 1px; }
 .note { text-align: center; margin-top: 4px; }
+.note.warn { text-align: left; }
 
 /* ---- 絆 ---- */
 .bond-row { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px; align-items: end; }
@@ -471,6 +472,7 @@ img, svg { -webkit-user-drag: none; }
   width: 32px; height: 32px; padding: 0; border-radius: 50%; display: grid; place-items: center;
   background: var(--container); border-color: var(--outline); color: var(--on-surface);
 }
+input[type="checkbox"]:focus, input[type="checkbox"]:focus-visible { outline: none; }
 .gifts-nav:active:not(:disabled) { transform: translateY(-50%) scale(.94); }
 .gifts-nav.prev { left: 0; }
 .gifts-nav.prev svg { transform: scaleX(-1); }
@@ -507,7 +509,7 @@ html { overflow-x: clip; }
 .day b { font-size: 1.25rem; font-weight: 700; }
 .day.sel { outline-width: 3px; }
 
-/* ---- メニューのページ本文 (content.html) ---- */
+/* ---- メニューのページ本文 (js/docs.js) ---- */
 .doc { font-size: .9375rem; line-height: 1.6; }
 .doc h2 { font-size: 1.25rem; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--outline); }
 .doc h3 { margin: 6px 0 0; font-size: 1rem; line-height: 1.5; }
@@ -682,7 +684,7 @@ dialog#update { width: min(92vw, 400px); padding: 0; }
 #update-body .sub { margin: 0; }
 .update-main { margin: 4px 0 0; font-weight: 700; line-height: 1.5; }
 /* 以前の項目は、一覧の中だけでスクロールさせる */
-#update-body .update-rest { max-height: 26vh; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--outline); overflow-y: auto; }
+#update-body .update-rest { max-height: 26vh; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--outline); overflow-y: auto; outline: none; }
 .update-foot { display: grid; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--outline); }
 .update-foot label { display: flex; align-items: center; gap: 8px; font-size: .8125rem; color: var(--on-variant); }
 #update button.primary { width: 100%; height: 44px; border-radius: 22px; clip-path: none; }
@@ -711,4 +713,34 @@ dialog#update { width: min(92vw, 400px); padding: 0; }
 @media (min-width: 900px) and (orientation: landscape) and (max-height: 820px) {
   :root { --cal-w: clamp(380px, calc((100dvh - 390px) * 1.06 + 48px), 700px); --w: calc(560px + 72px + var(--cal-w) + 48px); }
   .slot { aspect-ratio: 7 / 2; }
+}
+
+/* ---- 生徒アイコン (ドロップダウンの名前の左) ---- */
+.dd-icon { width: 1.6em; height: 1.6em; margin-right: .5em; object-fit: cover; vertical-align: middle; flex: none; }
+.dd-list button:has(.dd-icon) { display: flex; align-items: center; }
+.dd-btn span:has(.dd-icon) { display: inline-flex; align-items: center; }
+
+/* ---- 絆: アイコンを左に、名前・Rank・Date・Record をその右に ---- */
+.bond-head { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; align-items: center; }
+.bond-head:not(:has(.bond-icon)) { grid-template-columns: minmax(0, 1fr); }
+.bond-icon { width: 96px; height: 96px; object-fit: cover; }
+.bond-fields { display: grid; gap: 8px; min-width: 0; }
+.bond-row { grid-template-columns: 72px minmax(0, 1fr) auto; gap: 8px 14px; align-items: end; margin-bottom: 4px; }
+.bond-row label { gap: 0; }
+.bond-row input { height: 24px; }
+.bond-row .record { padding: 0 16px; height: 40px; }
+@media (max-width: 480px) {
+  .bond-head { grid-template-columns: 72px minmax(0, 1fr); gap: 12px; }
+  .bond-icon { width: 72px; height: 72px; }
+  .bond-row { grid-template-columns: 60px minmax(0, 1fr) auto; gap: 8px 6px; }
+  .bond-row input { padding-inline: 6px; font-size: .875rem; }
+  .bond-row .record { height: 32px; margin-bottom: 4px; padding: 0 10px; font-size: .8125rem; }
+}
+.bond-row .record { padding: 0 20px; font-size: 1.25rem; font-weight: 500; }
+/* 送信中の Record (+) ボタン: 文字の代わりに回転アイコン */
+.bond-row .record.busy { font-size: 0; position: relative; }
+.bond-row .record.busy::after {
+  content: ""; position: absolute; inset: 0; margin: auto; width: 18px; height: 18px; border-radius: 50%;
+  border: 3px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor;
+  animation: spin .8s linear infinite;
 }
