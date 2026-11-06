@@ -630,6 +630,12 @@ const actions = {
     closeDropdowns();
     list.classList.toggle("open", open);
     b.setAttribute("aria-expanded", String(open));
+    const q = list.querySelector(".dd-q");
+    if (q) {
+      q.value = "";
+      filterDropdown(q);
+      if (open) q.focus({ preventScroll: true });
+    }
     list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
   },
   "dd-pick"(b) {
@@ -772,6 +778,18 @@ const closeDropdowns = () => {
   }
 };
 
+// 検索窓の絞り込み。ひらがなはカタカナにそろえ、大文字小文字は区別しない
+const norm = (s) => s.toLowerCase().replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+function filterDropdown(input) {
+  const q = norm(input.value.trim());
+  for (const li of input.closest(".dd-list").querySelectorAll("li[data-q]")) {
+    li.hidden = !!q && !norm(li.dataset.q).includes(q);
+  }
+}
+document.addEventListener("input", (e) => {
+  if (e.target.matches(".dd-q")) filterDropdown(e.target);
+});
+
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".dd")) closeDropdowns();
   const b = e.target.closest("[data-act]");
@@ -828,7 +846,7 @@ dark.addEventListener("change", applyTheme);
 wide.addEventListener("change", () => render(true));
 
 const NAV_ICONS = { timer: "timer", calendar: "calendar", bond: "heart" };
-for (const b of document.querySelectorAll("nav button")) b.innerHTML = icon(NAV_ICONS[b.dataset.tab], 24);
+for (const b of document.querySelectorAll("nav button")) b.innerHTML = icon(NAV_ICONS[b.dataset.tab], 28);
 
 view.addEventListener("submit", async (e) => {
   e.preventDefault();

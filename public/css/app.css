@@ -187,7 +187,7 @@ hr { border: 0; border-top: 1px solid var(--outline); margin: 12px 0; }
 #app > nav button { position: relative; height: 56px; border-radius: 0; background: transparent; }
 #app > nav button[aria-selected="true"] { background: transparent; color: var(--on-surface); }
 #app > nav button[aria-selected="true"]::after {
-  content: ""; position: absolute; left: 50%; bottom: 6px; width: 32px; height: 3px; margin-left: -16px;
+  content: ""; position: absolute; left: 50%; bottom: 10px; width: 32px; height: 3px; margin-left: -16px;
   border-radius: 2px; background: var(--on-surface);
 }
 
@@ -303,7 +303,7 @@ button.rebound { animation: rebound .22s ease-out; }
 
 /* ナビの下線 */
 #app > nav button::after {
-  content: ""; position: absolute; left: 50%; bottom: 6px; width: 32px; height: 3px; margin-left: -16px;
+  content: ""; position: absolute; left: 50%; bottom: 10px; width: 32px; height: 3px; margin-left: -16px;
   border-radius: 2px; background: var(--on-surface); transform: scaleX(0); transition: transform .2s;
 }
 #app > nav button[aria-selected="true"]::after { transform: scaleX(1); }
@@ -581,9 +581,18 @@ html { overflow-x: clip; }
   .cols .block { gap: 6px; padding: 8px 0; }
   .cols .block + .block { margin-top: 0; }
   .cols .gifts { padding-bottom: 0; }
-  #app > nav button { height: 48px; }
-  #app > nav button::after, #app > nav button[aria-selected="true"]::after { bottom: 4px; }
-  #toast { bottom: calc(64px + env(safe-area-inset-bottom)); }
+  #app > nav button { height: 60px; }
+  #app > nav button::after, #app > nav button[aria-selected="true"]::after { bottom: 10px; }
+  #toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
+}
+
+/* ---- デスクトップ: 下のタブは中央に寄せ、アイコン同士を近づける ---- */
+@media (min-width: 601px) {
+  #app > nav { grid-auto-columns: 112px; justify-content: center; }
+  /* 押せる範囲は左右いっぱいに: 両端のボタンの当たり判定を画面の端まで伸ばす */
+  #app > nav button:first-child::before, #app > nav button:last-child::before { content: ""; position: absolute; top: 0; bottom: 0; width: 50vw; }
+  #app > nav button:first-child::before { right: 100%; }
+  #app > nav button:last-child::before { left: 100%; }
 }
 
 /* ---- スマホ: 持ったときの誤タップを避けるため左右の余白を広げる ---- */
@@ -610,6 +619,10 @@ html { overflow-x: clip; }
 
 /* ---- 2行ラベル (タイムゾーンなど): 本文 + 小さな補足 ---- */
 .dd-btn span:has(.l1), .dd-list button:has(.l1) { line-height: 1.25; }
+.dd .paren { font-size: .75em; }
+.dd-list li[hidden] { display: none; }
+.dd-search { position: sticky; top: -8px; z-index: 1; margin: -8px -8px 4px; padding: 8px; background: var(--container); }
+.dd-search input { width: 100%; height: 36px; background: var(--surface, var(--container)); border: 1px solid var(--outline); }
 .l1, .l2 { display: block; overflow: hidden; text-overflow: ellipsis; }
 .l2 { margin-top: 1px; font-size: .6875rem; font-weight: 400; color: var(--on-variant); letter-spacing: .02em; }
 .dd-btn:has(.l1) { height: auto; min-height: 44px; padding-block: 6px; text-align: left; }
@@ -725,16 +738,18 @@ dialog#update { width: min(92vw, 400px); padding: 0; }
 .bond-head:not(:has(.bond-icon)) { grid-template-columns: minmax(0, 1fr); }
 .bond-icon { width: 96px; height: 96px; object-fit: cover; }
 .bond-fields { display: grid; gap: 8px; min-width: 0; }
-.bond-row { grid-template-columns: 72px minmax(0, 1fr) auto; gap: 8px 14px; align-items: end; margin-bottom: 4px; }
-.bond-row label { gap: 0; }
-.bond-row input { height: 24px; }
-.bond-row .record { padding: 0 16px; height: 40px; }
+/* Rank / Date は「ラベル 入力枠」を縦に2行。Record ボタンは右に2行ぶんの高さで置く */
+.bond-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; margin-bottom: 4px; }
+.bond-row label { grid-column: 1; grid-template-columns: 3em minmax(0, 1fr); align-items: center; gap: 0 8px; }
+.bond-row input { height: 32px; min-width: 0; }
+.bond-row .record { grid-column: 2; grid-row: 1 / span 2; align-self: stretch; padding: 0 16px; height: auto; }
 @media (max-width: 480px) {
   .bond-head { grid-template-columns: 72px minmax(0, 1fr); gap: 12px; }
   .bond-icon { width: 72px; height: 72px; }
-  .bond-row { grid-template-columns: 60px minmax(0, 1fr) auto; gap: 8px 6px; }
+  .bond-row { gap: 6px 8px; }
+  .bond-row label { grid-template-columns: 2.6em minmax(0, 1fr); gap: 0 6px; }
   .bond-row input { padding-inline: 6px; font-size: .875rem; }
-  .bond-row .record { height: 32px; margin-bottom: 4px; padding: 0 10px; font-size: .8125rem; }
+  .bond-row .record { padding: 0 12px; font-size: .8125rem; }
 }
 .bond-row .record { padding: 0 20px; font-size: 1.25rem; font-weight: 500; }
 /* 送信中の Record (+) ボタン: 文字の代わりに回転アイコン */

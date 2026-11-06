@@ -1,5 +1,5 @@
 // タイマー / カレンダー / 絆 / メニュー の描画。状態は app.js が持ち、ここは HTML を組み立てるだけ。
-import { t, categoryName, getLang, giftName, studentName, LANGS } from './i18n.js';
+import { t, categoryName, getLang, giftName, studentName, studentNames, LANGS } from './i18n.js';
 import { UPDATE_LOGS } from './updates.js';
 import { BOND_MAX, CHARACTERS, RATE_COLOR, SPRITE, charName, favoriteGifts } from '../data/gifts.js';
 import {
@@ -165,17 +165,24 @@ export function renderCalendar(state) {
 // options: [[value, label, アイコン画像の URL(任意)], ...]。選択は data-act="dd-pick" data-field data-value で通知する。
 // ラベルは文字列、または [本文, 補足] (補足は小さい文字で2行目に出す)
 const ddIcon = (src) => (src ? `<img class="dd-icon" src="${esc(src)}" alt="" loading="lazy" decoding="async">` : '');
-const ddLabel = (l) => (Array.isArray(l) ? `<span class="l1">${esc(l[0])}</span><span class="l2">${esc(l[1])}</span>` : esc(l));
+// 別衣装の「(…)」部分は小さい文字にする(スマホで溢れないように)
+const ddText = (s) => {
+  const m = /^(.*?)\s*([（(].*)$/.exec(s);
+  return m ? `${esc(m[1])} <span class="paren">${esc(m[2])}</span>` : esc(s);
+};
+const ddLabel = (l) => (Array.isArray(l) ? `<span class="l1">${esc(l[0])}</span><span class="l2">${esc(l[1])}</span>` : ddText(l));
 
-function dropdown({ field, value, options, large = false }) {
+// options の4番目は検索用の文字列(任意)。search: true で一覧の先頭に検索窓を付ける
+function dropdown({ field, value, options, large = false, search = false }) {
   const current = options.find(([v]) => v === value) ?? options[0];
   return `<div class="dd${large ? ' lg' : ''}">
     <button type="button" class="dd-btn" data-act="dd-toggle" aria-haspopup="listbox" aria-expanded="false">
       <span>${large ? '' : ddIcon(current[2])}${ddLabel(current[1])}</span>${icon('dropdown', large ? 28 : 18)}
     </button>
     <ul class="dd-list" role="listbox">
+      ${search ? `<li class="dd-search"><input type="search" class="dd-q" placeholder="Search" autocomplete="off" aria-label="Search"></li>` : ''}
       ${options
-        .map(([v, l, img]) => `<li><button type="button" role="option" aria-selected="${v === current[0]}" data-act="dd-pick" data-field="${field}" data-value="${esc(v)}">${ddIcon(img)}${ddLabel(l)}</button></li>`)
+        .map(([v, l, img, q]) => `<li${q ? ` data-q="${esc(q)}"` : ''}><button type="button" role="option" aria-selected="${v === current[0]}" data-act="dd-pick" data-field="${field}" data-value="${esc(v)}">${ddIcon(img)}${ddLabel(l)}</button></li>`)
         .join('')}
     </ul>
   </div>`;
@@ -227,7 +234,7 @@ export const charIcon = (key) => `/img/students/${encodeURIComponent(key)}.webp`
 
 // 生徒の選択肢。日本語は五十音順(データ順)、他言語は表示名の辞書順に並べる
 function charOptions() {
-  const list = CHARACTERS.map((c) => [c.key, studentName(c.name)]);
+  const list = CHARACTERS.map((c) => [c.key, studentName(c.name), undefined, [c.name, ...Object.values(studentNames(c.name))].join(' ')]);
   const lang = getLang();
   return lang === 'ja' ? list : list.sort((a, b) => a[1].localeCompare(b[1], lang));
 }
@@ -255,11 +262,10 @@ export function renderBond(state) {
   return `<div class="cols bond-cols">
     <div>
     <form data-form="bond" class="block">
-      <h2 class="label">Student</h2>
       <div class="bond-head">
         <img class="bond-icon" src="${esc(charIcon(key))}" alt="" decoding="async">
         <div class="bond-fields">
-          ${dropdown({ field: 'char', value: key, large: true, options: charOptions() })}
+          ${dropdown({ field: 'char', value: key, large: true, search: true, options: charOptions() })}
           <div class="bond-row">
             <label>Rank <input name="bond_level" type="number" inputmode="numeric" min="1" max="${BOND_MAX}" value="${level}" required></label>
             <label>Date <input name="recorded_at" type="date" value="${esc(date)}" required></label>
