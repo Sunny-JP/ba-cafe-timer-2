@@ -31,4 +31,7 @@ persist = true
 [observability.issues]
 enabled = true
 
+[placement]
+mode = "smart"
+
 
