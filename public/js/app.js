@@ -6,7 +6,7 @@ import { disablePush, enablePush, pushEnabled, pushSupported, showForegroundNoti
 import { BOND_EXP, BOND_MAX, CHARACTERS } from "../data/gifts.js";
 import { clearGameDataCache, ensureGameData, hasGameData } from "./gamedata.js";
 import { logicalMonth, nextMonth, prevMonth, uuidv7 } from "./time.js";
-import { DEFAULT_ACCENT, MODES, WEEKDAYS, bondRecords, dayCounts, heatLevel, icon, langPicker, loader, renderBond, renderCalendar, renderDoc, renderLogList, renderMenu, renderSettings, renderTimer, skeleton, tick } from "./views.js";
+import { noticeBanner, DEFAULT_ACCENT, MODES, WEEKDAYS, bondRecords, dayCounts, heatLevel, icon, langPicker, loader, renderBond, renderCalendar, renderDoc, renderLogList, renderMenu, renderSettings, renderTimer, skeleton, tick } from "./views.js";
 import { UPDATE_LOGS } from "./updates.js";
 
 // /demo.html: 使い方ガイドのスクリーンショット用。見本のデータを表示するだけで、保存も通信もしない
@@ -122,6 +122,13 @@ function render(animate = false) {
   const tab = wide.matches && state.tab === "calendar" ? "timer" : state.tab;
   view.innerHTML = state.loading ? skeleton() : tab === "timer" && wide.matches ? `<div class="cols"><div>${renderTimer(state)}</div><div>${renderCalendar(state)}</div></div>` : { timer: renderTimer, calendar: renderCalendar, bond: renderBond, settings: renderSettings, doc: renderDoc }[tab](state);
   if ($("#menu").open) renderMenuBody();
+  // 更新のお知らせ: ヘッダーの下に出す (タイマー画面のときだけ)
+  const nb = $("#notice");
+  if (nb) {
+    const on = tab === "timer" && !!state.notice;
+    nb.hidden = !on;
+    nb.innerHTML = on ? noticeBanner(state.notice) : "";
+  }
   tick(view);
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", b.dataset.tab === tab);
   drawChart();
@@ -687,10 +694,16 @@ async function recordTap() {
 
 const actions = {
   tap: () => withPending("tap", recordTap),
-  "notice-close"() {
+  // お知らせを押すと、更新情報 (運営者情報の変更履歴) のページを開き、この更新のお知らせは消す
+  async "notice-open"() {
     if (state.notice) store.set("seenUpdate", state.notice.id);
     state.notice = null;
-    render();
+    state.doc = "operator";
+    state.docHtml = await loadDoc(state.doc);
+    state.tab = "doc";
+    render(true);
+    scrollTo(0, 0);
+    document.querySelector("#view ul.log")?.scrollIntoView({ block: "start" });
   },
   "ticket-use": (b) => withPending(`ticket${b.dataset.n}`, () => saveProfile({ [`ticket${b.dataset.n}_time`]: new Date().toISOString() })),
   "dd-toggle"(b) {

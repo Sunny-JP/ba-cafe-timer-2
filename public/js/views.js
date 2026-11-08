@@ -82,7 +82,7 @@ export function renderTimer(state, now = Date.now()) {
     })
     .join('');
 
-  return `${state.notice ? noticeBanner(state.notice) : ''}
+  return `
     <section class="block">
       <h2 class="label">Next Tap</h2>
       <p class="big indent">${countdown(nextTap)}</p>
@@ -206,18 +206,12 @@ const logItems = (logs) =>
 // 文書(運営者情報)の変更履歴
 export const renderLogList = () => `<ul class="log">${logItems(UPDATE_LOGS)}</ul>`;
 
-// 新しい更新があるときだけ、タイマー画面の Next Tap の上に出すお知らせ。閉じると、その更新は以後出さない
-export function noticeBanner(latest) {
-  const comment = pick(latest.comment);
-  return `<section class="notice" aria-label="${esc(t('updateTitle'))}">
-    <div class="notice-body">
-      <p class="sub">${esc(t('updateTitle'))} · ${esc(logHead(latest))}</p>
-      <p class="update-main">${esc(pick(latest.content))}</p>
-      ${comment ? `<p class="sub">${esc(comment)}</p>` : ''}
-    </div>
-    <button class="ghost icon sm" data-act="notice-close" aria-label="${esc(t('close'))}">${icon('close', 18)}</button>
-  </section>`;
-}
+// 新しい更新があるときだけ、ヘッダーの下に出す1行のお知らせ。押すと更新情報のページを開き、お知らせは消える
+export const noticeBanner = (latest) => `<button class="notice" data-act="notice-open">
+    <span class="notice-head"><b>${esc(t('noticeLabel'))}</b><time>${esc(logHead(latest))}</time></span>
+    <span class="notice-title">${esc(pick(latest.content))}</span>
+    ${icon('chevron', 20)}
+  </button>`;
 
 // 読み込み中の仮の画面 (タイマー画面と同じ形。中身が入る位置がずれない)
 export const skeleton = () => `<div class="skeleton" role="status" aria-busy="true" aria-label="${esc(t('loading'))}">

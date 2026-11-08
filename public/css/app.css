@@ -773,12 +773,14 @@ label.menu-item:focus-visible { outline: 2px solid var(--primary); outline-offse
 .cal-title .dd.lg .dd-list.open { transform: translateX(-50%); }
 .cal-title .dd.lg .dd-list button { justify-content: center; font-weight: 500; }
 
-/* 更新のお知らせ (Next Tap の上に臨時で出す) */
-.notice { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0 8px; padding: 10px 8px 10px 14px; border-radius: 16px; background: var(--primary-container); color: var(--on-primary-container); font-size: .875rem; }
-.notice-body { flex: 1; min-width: 0; display: grid; gap: 2px; }
-.notice .sub { margin: 0; color: inherit; opacity: .75; }
-.notice .update-main { margin: 0; font-weight: 700; line-height: 1.5; }
-.notice button { flex: none; color: inherit; }
+/* 更新のお知らせ: ヘッダーに続く1本のバー。上段=ラベルと日付、下段=タイトル (はみ出しは三点リーダ) */
+#notice { border-block: 1px solid var(--outline); background: var(--container); }
+.notice { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; width: 100%; max-width: 640px; margin: 0 auto; padding: 6px 28px 7px; border: 0; border-radius: 0; background: none; color: var(--on-surface); text-align: left; font: inherit; clip-path: none; }
+.notice-head { grid-column: 1; display: flex; align-items: baseline; gap: 8px; font-size: .75rem; line-height: 1.3; color: var(--on-variant); }
+.notice-head b { font-weight: 700; color: var(--primary); letter-spacing: .04em; }
+.notice-head time { font-variant-numeric: tabular-nums; }
+.notice-title { grid-column: 1; min-width: 0; font-size: .875rem; font-weight: 500; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notice svg { grid-column: 2; grid-row: 1 / span 2; fill: var(--on-variant); }
 
 /* 読み込み中の仮の画面 */
 .sk { border-radius: 12px; background: linear-gradient(90deg, var(--container) 25%, color-mix(in srgb, var(--outline) 45%, var(--container)) 50%, var(--container) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
