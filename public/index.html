@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Cafe Timer 2</title>
     <meta name="description" content="ブルーアーカイブ カフェのタップ間隔とチケットを管理するタイマー" />
     <meta name="theme-color" content="#000000" />
@@ -35,8 +35,7 @@
     <link rel="icon" href="/img/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/img/icon.svg" />
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-    <link rel="modulepreload" href="/js/app.js" />
-    <link rel="modulepreload" href="/js/auth.js" />
+    <link rel="modulepreload" href="/dist/app.js" />
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js" />
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -44,8 +43,7 @@
     <!-- フォントは表示をブロックしない(読み込み後に切り替わる) -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500&display=swap" media="print" onload="this.media='all'" />
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500&display=swap" /></noscript>
-    <link rel="stylesheet" href="/css/app.css" />
-    <script src="https://accounts.google.com/gsi/client" async></script>
+    <link rel="stylesheet" href="/dist/app.css" />
   </head>
   <body>
     <div id="loading" class="center loader" role="status">
@@ -78,10 +76,10 @@
         </div>
       </header>
       <main id="view"></main>
-      <nav>
-        <button data-tab="timer" aria-selected="true" data-i18n-aria="navTimer"></button>
-        <button data-tab="calendar" data-i18n-aria="navCalendar"></button>
-        <button data-tab="bond" data-i18n-aria="navBond"></button>
+      <nav role="tablist">
+        <button role="tab" data-tab="timer" aria-selected="true" data-i18n-aria="navTimer"></button>
+        <button role="tab" data-tab="calendar" aria-selected="false" data-i18n-aria="navCalendar"></button>
+        <button role="tab" data-tab="bond" aria-selected="false" data-i18n-aria="navBond"></button>
       </nav>
     </div>
 
@@ -92,15 +90,6 @@
       <div class="confirm-actions"><button id="about-close" class="primary" data-i18n="close"></button></div>
     </dialog>
 
-    <dialog id="update">
-      <h2 data-i18n="updateTitle"></h2>
-      <div id="update-body" class="doc"></div>
-      <div class="update-foot">
-        <label><input type="checkbox" id="update-hide" /><span data-i18n="updateHide"></span></label>
-        <button id="update-ok" class="primary" data-i18n="ok"></button>
-      </div>
-    </dialog>
-
     <dialog id="confirm">
       <p id="confirm-msg"></p>
       <div class="confirm-actions">
@@ -108,14 +97,13 @@
         <button id="confirm-ok" class="primary"></button>
       </div>
     </dialog>
-    <dialog id="busy" class="loader" role="status" aria-live="polite">
+    <dialog id="busy" class="loader">
       <span class="spinner" aria-hidden="true"></span>
-      <p id="busy-msg"></p>
+      <p id="busy-msg" role="status" aria-live="polite"></p>
       <progress id="busy-bar" max="3" value="0"></progress>
     </dialog>
     <div id="toast" role="status" hidden></div>
 
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-    <script type="module" src="/js/app.js"></script>
+    <script type="module" src="/dist/app.js"></script>
   </body>
 </html>

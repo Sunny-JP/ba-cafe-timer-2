@@ -41,6 +41,9 @@ async function fetchAndApply(cachedVersion) {
   return true;
 }
 
+// 端末に保存したゲームデータがあるか (あれば ensureGameData がすぐ使える)
+export const hasGameData = () => !!readCache();
+
 // ログアウト時: 端末に保存したゲームデータを消し、次にログインしたときは取り直す
 export function clearGameDataCache() {
   loading = null;

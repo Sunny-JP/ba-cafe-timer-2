@@ -691,16 +691,8 @@ dialog#about { padding: 24px 20px; overflow-y: auto; }
 dialog#about .confirm-actions { margin-top: 16px; }
 
 /* ---- アップデートのお知らせ ---- */
-dialog#update { width: min(92vw, 400px); padding: 0; }
-#update h2 { margin: 0; padding: 16px 20px 12px; font-size: 1rem; border-bottom: 1px solid var(--outline); }
-#update-body { padding: 12px 20px; font-size: .875rem; }
-#update-body .sub { margin: 0; }
 .update-main { margin: 4px 0 0; font-weight: 700; line-height: 1.5; }
 /* 以前の項目は、一覧の中だけでスクロールさせる */
-#update-body .update-rest { max-height: 26vh; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--outline); overflow-y: auto; outline: none; }
-.update-foot { display: grid; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--outline); }
-.update-foot label { display: flex; align-items: center; gap: 8px; font-size: .8125rem; color: var(--on-variant); }
-#update button.primary { width: 100%; height: 44px; border-radius: 22px; clip-path: none; }
 
 /* ---- PC (横長の画面): 幅は程よい大きさまでにして、縦はスクロールしない範囲に収める ---- */
 @media (min-width: 900px) and (orientation: landscape) {
@@ -780,3 +772,20 @@ label.menu-item:focus-visible { outline: 2px solid var(--primary); outline-offse
 .cal-title .dd.lg .dd-list { min-width: 160px; max-height: 280px; left: 50%; transform: translateX(-50%); }
 .cal-title .dd.lg .dd-list.open { transform: translateX(-50%); }
 .cal-title .dd.lg .dd-list button { justify-content: center; font-weight: 500; }
+
+/* 更新のお知らせ (Next Tap の上に臨時で出す) */
+.notice { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0 8px; padding: 10px 8px 10px 14px; border-radius: 16px; background: var(--primary-container); color: var(--on-primary-container); font-size: .875rem; }
+.notice-body { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.notice .sub { margin: 0; color: inherit; opacity: .75; }
+.notice .update-main { margin: 0; font-weight: 700; line-height: 1.5; }
+.notice button { flex: none; color: inherit; }
+
+/* 読み込み中の仮の画面 */
+.sk { border-radius: 12px; background: linear-gradient(90deg, var(--container) 25%, color-mix(in srgb, var(--outline) 45%, var(--container)) 50%, var(--container) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+.sk-label { height: 16px; width: 88px; border-radius: 8px; }
+.sk-big { height: clamp(3.025rem, 16.5vw, 4.4rem); width: 72%; margin-left: 14px; }
+.sk-timer { height: clamp(1.65rem, 7.7vw, 2.2rem); width: 70%; margin-left: 14px; }
+.sk-btn { height: 52px; border-radius: 26px; }
+.slot.sk { color: transparent; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }

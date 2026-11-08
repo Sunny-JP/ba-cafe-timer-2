@@ -1,6 +1,15 @@
 // Google ログイン(Firebase Auth)と Drive アクセストークンの取得。
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import {
+  GoogleAuthProvider,
+  browserPopupRedirectResolver,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  initializeAuth,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut,
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
 // TODO: Firebase コンソールの値に置き換える (firebase-messaging-sw.js にも同じ値が必要)
 export const firebaseConfig = {
@@ -17,7 +26,17 @@ const GOOGLE_CLIENT_ID = "628000422074-hrfs7ptufkgvcbd0p2cuu1qdlb5sd52u.apps.goo
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
 
 export const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+// ポップアップ用の部品 (gapi・iframe 計 約130KB) は initializeAuth に渡さず、ログインのときだけ読み込む。
+// 保存済みのログインはこれまでと同じ IndexedDB から復元される。
+const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+
+// 最初のログイン状態が決まるまで待つための Promise。保存済みデータで先に描画したあとのタップは、これを待ってから送る
+const ready = new Promise((resolve) => {
+  const stop = onAuthStateChanged(auth, () => {
+    stop();
+    resolve();
+  });
+});
 
 export class ReauthRequired extends Error {}
 
@@ -26,7 +45,7 @@ export function onUser(callback) {
 }
 
 export async function login() {
-  const result = await signInWithPopup(auth, new GoogleAuthProvider());
+  const result = await signInWithPopup(auth, new GoogleAuthProvider(), browserPopupRedirectResolver);
   return result.user;
 }
 
@@ -35,13 +54,33 @@ export async function logout() {
 }
 
 export async function getIdToken() {
+  await ready;
   if (!auth.currentUser) throw new ReauthRequired("not signed in");
   return auth.currentUser.getIdToken();
 }
 
 // Drive 連携: 認可コードだけをブラウザで受け取り、サーバーへ渡す(トークンはブラウザに残さない)。
 // 初回(または連携が取り消されたとき)だけ必要で、ボタンのタップから呼ぶこと。
-export function requestDriveCode() {
+// Google Identity Services は、ログイン画面や再連携のときだけ読み込む (初回表示では不要で、約100KB)
+let gsiLoading = null;
+export function preloadGsi() {
+  if (window.google?.accounts?.oauth2) return Promise.resolve();
+  gsiLoading ??= new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.onload = resolve;
+    s.onerror = () => {
+      gsiLoading = null; // 次の機会にやり直す
+      resolve();
+    };
+    document.head.append(s);
+  });
+  return gsiLoading;
+}
+
+export async function requestDriveCode() {
+  await preloadGsi();
   return new Promise((resolve, reject) => {
     const gis = window.google?.accounts?.oauth2;
     if (!gis) return reject(new ReauthRequired("GIS unavailable"));

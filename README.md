@@ -145,6 +145,8 @@ npx wrangler deploy                 # デプロイ
 node --test test/time.test.mjs      # time.js のテスト
 ```
 
+初回は `npm install` が必要です。`wrangler dev` / `wrangler deploy` は、先に `npm run build`([scripts/build.mjs](scripts/build.mjs))を自動で実行し、`public/js` と `public/css/app.css` を `public/dist/` に最小化してまとめます(`dist/` は Git に含めません)。`index.html` と `demo.html` は `dist/` を読み込みます。画面の JS・CSS を変更したら、`npm run build` を実行してください。
+
 `--test-scheduled` で起動した場合、別のターミナルから次のコマンドで cron を 1 回実行できます。
 
 ```

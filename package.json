@@ -1,0 +1,12 @@
+{
+  "name": "ba-cafe-timer-2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

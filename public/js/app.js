@@ -1,14 +1,13 @@
 // 起動・タブ切替・状態管理。
-import { ReauthRequired, login, logout, onUser, requestDriveCode } from "./auth.js";
+import { ReauthRequired, login, logout, onUser, preloadGsi, requestDriveCode } from "./auth.js";
 import { ApiError, api } from "./api.js";
 import { applyStatic, getLang, setLang, t } from "./i18n.js";
 import { disablePush, enablePush, pushEnabled, pushSupported, showForegroundNotifications } from "./push.js";
 import { BOND_EXP, BOND_MAX, CHARACTERS } from "../data/gifts.js";
-import { clearGameDataCache, ensureGameData } from "./gamedata.js";
+import { clearGameDataCache, ensureGameData, hasGameData } from "./gamedata.js";
 import { logicalMonth, nextMonth, prevMonth, uuidv7 } from "./time.js";
-import { DEFAULT_ACCENT, MODES, WEEKDAYS, bondRecords, dayCounts, heatLevel, icon, langPicker, loader, renderBond, renderCalendar, renderDoc, renderLogList, renderMenu, renderSettings, renderTimer, renderUpdateNotice, tick } from "./views.js";
+import { DEFAULT_ACCENT, MODES, WEEKDAYS, bondRecords, dayCounts, heatLevel, icon, langPicker, loader, renderBond, renderCalendar, renderDoc, renderLogList, renderMenu, renderSettings, renderTimer, skeleton, tick } from "./views.js";
 import { UPDATE_LOGS } from "./updates.js";
-import { applyDemo, demoLang } from "./demo.js";
 
 // /demo.html: 使い方ガイドのスクリーンショット用。見本のデータを表示するだけで、保存も通信もしない
 const DEMO = !!window.CT_DEMO;
@@ -90,6 +89,8 @@ const state = {
   mode: store.get("mode", "auto", MODES),
   accent: /^#[0-9a-f]{6}$/i.test(store.get("accent", "", null) ?? "") ? store.get("accent", "", null) : DEFAULT_ACCENT,
   user: null,
+  // 見ていない更新があるときだけ、タイマー画面の Next Tap の上にお知らせを出す (閉じると以後出さない)
+  notice: DEMO ? null : UPDATE_LOGS[0] && store.get("seenUpdate", "") !== UPDATE_LOGS[0].id ? UPDATE_LOGS[0] : null,
   tab: "timer",
   profile: { ticket1_time: null, ticket2_time: null, timezone: null },
   lastTap: null,
@@ -119,7 +120,7 @@ function render(animate = false) {
   state.calAtMax = state.calMonth >= state.calMaxMonth;
   // 横長の画面ではタイマーとカレンダーを並べて表示する(カレンダーのタブは隠れる)
   const tab = wide.matches && state.tab === "calendar" ? "timer" : state.tab;
-  view.innerHTML = state.loading ? loader() : tab === "timer" && wide.matches ? `<div class="cols"><div>${renderTimer(state)}</div><div>${renderCalendar(state)}</div></div>` : { timer: renderTimer, calendar: renderCalendar, bond: renderBond, settings: renderSettings, doc: renderDoc }[tab](state);
+  view.innerHTML = state.loading ? skeleton() : tab === "timer" && wide.matches ? `<div class="cols"><div>${renderTimer(state)}</div><div>${renderCalendar(state)}</div></div>` : { timer: renderTimer, calendar: renderCalendar, bond: renderBond, settings: renderSettings, doc: renderDoc }[tab](state);
   if ($("#menu").open) renderMenuBody();
   tick(view);
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", b.dataset.tab === tab);
@@ -187,11 +188,31 @@ function registerRealNearest() {
     return items;
   };
 }
+// Chart.js (約60KB) は絆タブのグラフを描くときに初めて読み込む
+let chartLoading = null;
+function ensureChart() {
+  if (window.Chart) return Promise.resolve();
+  chartLoading ??= new Promise((resolve) => {
+    const el = document.createElement("script");
+    el.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js";
+    el.onload = resolve;
+    el.onerror = () => {
+      chartLoading = null; // 次の描画でやり直す
+      resolve();
+    };
+    document.head.append(el);
+  });
+  return chartLoading;
+}
 function drawChart() {
   chart?.destroy();
   chart = null;
   const canvas = $("#chart");
-  if (!canvas || !window.Chart) return;
+  if (!canvas) return;
+  if (!window.Chart) {
+    ensureChart().then(() => window.Chart && $("#chart") && drawChart());
+    return;
+  }
   registerRealNearest();
   // 軸・小ウインドウの文字はグラフ設定ではなく Chart.defaults から決まるので、アプリのフォントをここで指定する
   Chart.defaults.font.family = getComputedStyle(canvas).fontFamily;
@@ -452,15 +473,10 @@ async function loadDoc(id) {
   return (translated ? "" : `<p class="note info">${t("docFallback")}</p>`) + withUpdateLog(html);
 }
 
-// 新しい更新情報があるとき、アップデートのお知らせを出す。「今後表示しない」にした id は出さない
-let updateShown = false;
-function showUpdateNotice() {
-  const latest = UPDATE_LOGS[0];
-  if (updateShown || !latest || store.get("seenUpdate", "") === latest.id) return;
-  updateShown = true;
-  $("#update-body").innerHTML = renderUpdateNotice();
-  $("#update-hide").checked = false;
-  $("#update").showModal();
+// 再認証のバナーを出す。Drive の認可画面 (Google Identity Services) は、ここで先に読み込んでおく
+function showReauth() {
+  $("#reauth").hidden = false;
+  preloadGsi();
 }
 
 function show(screen) {
@@ -486,13 +502,53 @@ async function guarded(fn) {
           /* 下のバナーで再認証してもらう */
         }
       }
-      $("#reauth").hidden = false;
+      showReauth();
     } else toast(e.message);
     return undefined;
   }
 }
 
 // タイマー(と当月のカレンダー)に要る分だけ先に読んで表示し、絆とゲームデータは続けて裏で読む
+// 前回のタイマー画面のデータを端末に残し、次の起動ですぐ表示する (裏で最新に更新する)
+const bootKey = (uid) => `boot.${uid}`;
+function saveBootCache() {
+  if (DEMO || !state.user) return;
+  store.set(bootKey(state.user.uid), JSON.stringify({ month: state.calMonth, profile: state.profile, last_tap: state.lastTap, taps: state.monthTaps }));
+}
+function loadBootCache(uid) {
+  try {
+    const c = JSON.parse(store.get(bootKey(uid), "", null) ?? "null");
+    return c && c.month === logicalMonth(Date.now()) && Array.isArray(c.taps) ? c : null;
+  } catch {
+    return null;
+  }
+}
+const applyBoot = (c) =>
+  Object.assign(state, { profile: c.profile, lastTap: c.last_tap, monthTaps: c.taps, calMonth: c.month, calTaps: c.taps });
+
+// 絆の記録も端末に残す。ゲームデータ (js/gamedata.js) の保存分と合わせて、絆タブを待たずに開けるようにする
+const relKey = (uid) => `rel.${uid}`;
+function saveRelCache() {
+  if (!DEMO && state.user) store.set(relKey(state.user.uid), JSON.stringify(state.relationship));
+}
+function primeBond(uid) {
+  let rel = null;
+  try {
+    rel = JSON.parse(store.get(relKey(uid), "", null) ?? "null");
+  } catch {
+    /* 保存分が壊れていれば使わない */
+  }
+  if (!Array.isArray(rel) || !hasGameData()) return;
+  ensureGameData({ onUpdate: () => render() }).catch(() => {}); // 保存分を同期で適用し、更新の確認は裏で行う
+  state.relationship = rel;
+  state.bondChar ??= store.get(
+    "char",
+    CHARACTERS[0].key,
+    CHARACTERS.map((c) => c.key),
+  );
+  state.bondReady = true;
+}
+
 async function loadAll() {
   const data = await guarded(() => api.bootstrap(logicalMonth(Date.now())));
   autoLink = false; // 連携済みだった場合は、あとで自動では開かない
@@ -505,9 +561,9 @@ async function loadAll() {
     calTaps: data.taps,
     loading: false,
   });
+  saveBootCache();
   render();
   loadDeferred();
-  showUpdateNotice();
 }
 
 // 絆の記録・EXP表・キャラ・贈物。サーバーから取得し、保存済みのゲームデータがあればすぐ使う (js/gamedata.js)
@@ -526,6 +582,7 @@ async function loadDeferred() {
     CHARACTERS.map((c) => c.key),
   );
   state.bondReady = true;
+  saveRelCache();
   render();
 }
 
@@ -546,6 +603,7 @@ async function saveProfile(patch) {
   render();
   const data = await guarded(() => api.saveProfile(patch));
   state.profile = data ? data.profile : before;
+  saveBootCache();
   render();
 }
 
@@ -602,7 +660,7 @@ async function recordTap() {
     if (e instanceof ReauthRequired) {
       // 再認証が必要でもタップは失わない: 端末に保存し、連携し直したあとに送る
       savePendingTaps([...loadPendingTaps(), temp]);
-      $("#reauth").hidden = false;
+      showReauth();
       toast(t("tapQueued"));
       render();
       return true;
@@ -613,6 +671,7 @@ async function recordTap() {
     state.lastTap = data.tap;
     state.monthTaps = state.monthTaps.map((t) => (t === temp ? data.tap : t));
     if (onCurrent) state.calTaps = state.monthTaps;
+    saveBootCache();
     console.log(
       data.scheduled
         ? `[push] 通知を予約しました: ${new Date(data.send_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })} (JST)`
@@ -628,6 +687,11 @@ async function recordTap() {
 
 const actions = {
   tap: () => withPending("tap", recordTap),
+  "notice-close"() {
+    if (state.notice) store.set("seenUpdate", state.notice.id);
+    state.notice = null;
+    render();
+  },
   "ticket-use": (b) => withPending(`ticket${b.dataset.n}`, () => saveProfile({ [`ticket${b.dataset.n}_time`]: new Date().toISOString() })),
   "dd-toggle"(b) {
     const list = b.nextElementSibling;
@@ -712,6 +776,7 @@ const actions = {
     }
     if (ok) {
       state.relationship = state.relationship.filter((x) => x.id !== b.dataset.id);
+      saveRelCache();
       state.bondLevel = null;
       render();
     }
@@ -829,10 +894,6 @@ function closeOnOutsideClick(dialog) {
 closeOnOutsideClick($("#menu"));
 closeOnOutsideClick($("#confirm"));
 closeOnOutsideClick($("#about"));
-$("#update-ok").addEventListener("click", () => {
-  if ($("#update-hide").checked) store.set("seenUpdate", UPDATE_LOGS[0].id);
-  $("#update").close();
-});
 
 // ログイン前の画面: 言語の選択と About
 const renderLoginLang = () => ($("#login-lang").innerHTML = langPicker(getLang()));
@@ -872,6 +933,7 @@ view.addEventListener("submit", async (e) => {
   }
   if (data) {
     state.relationship = [...state.relationship, data.item];
+    saveRelCache();
     state.bondLevel = null; // 次の RANK を初期値にする
     state.bondDate = bond.recorded_at;
     render();
@@ -965,6 +1027,7 @@ applyTheme();
 setInterval(() => tick(view), 1000);
 
 if (DEMO) {
+  const { applyDemo, demoLang } = __DEMO_BUILD__ ? await import("./demo.js") : {};
   // タイトル (Cafe Timer 2) は、本物のアプリへ戻るボタンにする
   $("#home-btn").addEventListener("click", () => location.assign("/"));
   // ログインも通信もせず、見本のデータで画面を出す
@@ -979,18 +1042,63 @@ if (DEMO) {
     $("#menu").showModal();
   }
 } else {
+  // 前回ログインしたユーザーの保存データがあれば、認証の確定 (数百ms〜1秒) を待たずに先に描画する。
+  // 認証が別の結果になったとき (ログアウト済み・別ユーザー) は、下の onUser で切り替える。
+  const hintUid = store.get("uid", "", null);
+  let primed = false;
+  const hintCache = hintUid && loadBootCache(hintUid);
+  if (hintCache) {
+    applyBoot(hintCache);
+    primeBond(hintUid);
+    state.user = { uid: hintUid };
+    primed = true;
+    show("app");
+    render();
+  }
+  const resetUserData = () => {
+    Object.assign(state, {
+      profile: { ticket1_time: null, ticket2_time: null, timezone: null },
+      lastTap: null,
+      monthTaps: [],
+      calTaps: [],
+      relationship: [],
+      bondReady: false,
+      deferredLoading: false,
+      selectedDay: null,
+    });
+  };
+
   onUser((user) => {
+    if (primed && user?.uid !== hintUid) {
+      resetUserData(); // 先に出していたのは別のユーザー (またはログアウト済み) のデータ
+      primed = false;
+    }
     state.user = user;
     if (!user) {
       // ログアウト(失効を含む): 端末のゲームデータと、前のユーザーの絆の記録を残さない
       clearGameDataCache();
+      try {
+        for (const k of Object.keys(localStorage)) if (k.startsWith("ct.boot.") || k.startsWith("ct.rel.")) localStorage.removeItem(k);
+      } catch {
+        /* 消せなくても動作する */
+      }
+      store.set("uid", "");
       Object.assign(state, { relationship: [], bondReady: false, deferredLoading: false });
-      return show("login");
+      show("login");
+      preloadGsi(); // ログイン後の Drive 連携ですぐ使えるように
+      return;
     }
+    store.set("uid", user.uid);
     show("app");
-    showForegroundNotifications();
-    state.loading = true;
-    render();
+    if (!primed) {
+      const cached = loadBootCache(user.uid);
+      if (cached) applyBoot(cached);
+      primeBond(user.uid);
+      state.loading = !cached;
+      render();
+    }
+    // 通知の受信設定 (firebase-messaging の読み込みを含む) は、画面が出たあとの空き時間に行う
+    (window.requestIdleCallback ?? setTimeout)(() => showForegroundNotifications().catch(() => {}));
     flushPendingTaps()
       .then(loadAll)
       .finally(() => {

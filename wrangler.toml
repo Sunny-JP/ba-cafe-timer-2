@@ -2,6 +2,10 @@ name = "ba-cafe-timer-2"
 main = "src/worker.js"
 compatibility_date = "2026-10-01"
 
+[build]
+command = "npm run build"
+watch_dir = ["public/js", "public/css"]
+
 [assets]
 directory = "./public"
 run_worker_first = ["/api/*"]

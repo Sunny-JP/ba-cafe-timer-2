@@ -29,6 +29,7 @@ const ICONS = {
   logout: 'M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z',
   upload: 'M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z',
   download: 'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
+  close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
   info: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z',
   book: 'M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z',
   help: 'M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z',
@@ -81,7 +82,7 @@ export function renderTimer(state, now = Date.now()) {
     })
     .join('');
 
-  return `
+  return `${state.notice ? noticeBanner(state.notice) : ''}
     <section class="block">
       <h2 class="label">Next Tap</h2>
       <p class="big indent">${countdown(nextTap)}</p>
@@ -205,15 +206,27 @@ const logItems = (logs) =>
 // 文書(運営者情報)の変更履歴
 export const renderLogList = () => `<ul class="log">${logItems(UPDATE_LOGS)}</ul>`;
 
-// 「アップデートのお知らせ」の中身: いちばん新しいものを大きく、以前のものを下の一覧に
-export function renderUpdateNotice() {
-  const [latest, ...rest] = UPDATE_LOGS;
+// 新しい更新があるときだけ、タイマー画面の Next Tap の上に出すお知らせ。閉じると、その更新は以後出さない
+export function noticeBanner(latest) {
   const comment = pick(latest.comment);
-  return `<p class="sub">${esc(logHead(latest))}</p>
-    <p class="update-main">${esc(pick(latest.content))}</p>
-    ${comment ? `<p class="sub">${esc(comment)}</p>` : ''}
-    ${rest.length ? `<ul class="log update-rest">${logItems(rest)}</ul>` : ''}`;
+  return `<section class="notice" aria-label="${esc(t('updateTitle'))}">
+    <div class="notice-body">
+      <p class="sub">${esc(t('updateTitle'))} · ${esc(logHead(latest))}</p>
+      <p class="update-main">${esc(pick(latest.content))}</p>
+      ${comment ? `<p class="sub">${esc(comment)}</p>` : ''}
+    </div>
+    <button class="ghost icon sm" data-act="notice-close" aria-label="${esc(t('close'))}">${icon('close', 18)}</button>
+  </section>`;
 }
+
+// 読み込み中の仮の画面 (タイマー画面と同じ形。中身が入る位置がずれない)
+export const skeleton = () => `<div class="skeleton" role="status" aria-busy="true" aria-label="${esc(t('loading'))}">
+  <section class="block"><div class="sk sk-label"></div><div class="sk sk-big"></div>
+    <ul class="slots">${'<li class="slot sk"></li>'.repeat(8)}</ul><div class="sk sk-btn"></div></section>
+  <section class="block"><div class="sk sk-label"></div>
+    <div class="grid2"><div class="sk sk-timer"></div><div class="sk sk-timer"></div></div>
+    <div class="grid2"><div class="sk sk-btn"></div><div class="sk sk-btn"></div></div></section>
+</div>`;
 
 // ログイン前の画面にも置く言語の選択
 export const langPicker = (value) => dropdown({ field: 'lang', value, options: LANGS });
