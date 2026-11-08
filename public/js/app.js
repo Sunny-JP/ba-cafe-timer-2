@@ -613,6 +613,11 @@ async function recordTap() {
     state.lastTap = data.tap;
     state.monthTaps = state.monthTaps.map((t) => (t === temp ? data.tap : t));
     if (onCurrent) state.calTaps = state.monthTaps;
+    console.log(
+      data.scheduled
+        ? `[push] 通知を予約しました: ${new Date(data.send_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })} (JST)`
+        : "[push] 通知は予約されませんでした",
+    );
     if (!data.scheduled && state.pushOn) toast(t("noPushSchedule"));
   } else {
     Object.assign(state, prev);

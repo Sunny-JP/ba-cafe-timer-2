@@ -101,8 +101,15 @@ export const nextTapTime = (lastMs) => Math.min(lastMs + TAP_INTERVAL, nextBound
 export function daySlots(now, taps) {
   const dayStart = Math.floor((now + JST_OFFSET - 4 * HOUR) / DAY) * DAY + 4 * HOUR - JST_OFFSET;
   const times = taps.map((t) => Date.parse(t.tap_time)).sort((a, b) => a - b);
+  // 最新のタップより後の空き枠は「最新タップ + 3時間ごと」の時刻で表示する(次の 4:00/16:00 以降は元の時刻に戻る)
+  const inDay = times.filter((ms) => ms >= dayStart && ms < dayStart + DAY);
+  const last = inDay.length ? inDay[inDay.length - 1] : null;
+  const lastIdx = last === null ? -1 : Math.floor((last - dayStart) / TAP_INTERVAL);
+  const boundary = last === null ? 0 : nextBoundary(last);
   return Array.from({ length: 8 }, (_, k) => {
     const start = dayStart + k * TAP_INTERVAL;
-    return { start, tap: times.find((ms) => ms >= start && ms < start + TAP_INTERVAL) ?? null };
+    const shifted = last === null || k <= lastIdx ? null : last + (k - lastIdx) * TAP_INTERVAL;
+    const time = shifted !== null && shifted < boundary ? shifted : start;
+    return { start, time, tap: times.find((ms) => ms >= start && ms < start + TAP_INTERVAL) ?? null };
   });
 }

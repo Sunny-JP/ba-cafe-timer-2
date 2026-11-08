@@ -221,7 +221,7 @@ const routes = {
         console.error('schedule notification failed', e?.message);
       }
     }
-    return { tap, scheduled };
+    return { tap, scheduled, send_at: scheduled ? new Date(sendAt).toISOString() : null };
   },
 
   'PUT /api/profile': async ({ drive, body }) => {

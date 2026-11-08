@@ -65,7 +65,7 @@ export function renderTimer(state, now = Date.now()) {
     .map((s) =>
       s.tap
         ? `<li class="slot on">${fmtTime(s.tap, tz)}</li>`
-        : `<li class="slot">${fmtTime(s.start, tz)}</li>`,
+        : `<li class="slot">${fmtTime(s.time, tz)}</li>`,
     )
     .join('');
 
