@@ -609,7 +609,17 @@ async function saveProfile(patch) {
   state.profile = { ...before, ...patch };
   render();
   const data = await guarded(() => api.saveProfile(patch));
-  state.profile = data ? data.profile : before;
+  if (data) {
+    // 応答の profile 全体では、並行して行った別の更新(楽観的に反映済み)を巻き戻すことがある。送った項目だけ反映する
+    const saved = {};
+    for (const k of Object.keys(patch)) saved[k] = data.profile[k];
+    state.profile = { ...state.profile, ...saved, updated_at: data.profile.updated_at };
+  } else {
+    // 失敗した項目だけ元に戻す
+    const undone = {};
+    for (const k of Object.keys(patch)) undone[k] = before[k];
+    state.profile = { ...state.profile, ...undone };
+  }
   saveBootCache();
   render();
 }

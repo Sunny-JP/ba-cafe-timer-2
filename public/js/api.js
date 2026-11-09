@@ -8,14 +8,24 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, path, body, { drive = true } = {}, retry = true) {
+// サーバーは Drive 上のファイルを「読む→書き換える→丸ごと上書き」する。書き込みが同時に走ると
+// 片方の更新が消えるため、書き込み系のリクエストは1本ずつ順番に送る。
+let writeQueue = Promise.resolve();
+function request(method, path, body, opts, retry) {
+  if (method === 'GET') return send(method, path, body, opts, retry);
+  const run = writeQueue.then(() => send(method, path, body, opts, retry));
+  writeQueue = run.catch(() => {});
+  return run;
+}
+
+async function send(method, path, body, { drive = true } = {}, retry = true) {
   const headers = { Authorization: `Bearer ${await getIdToken()}` };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (res.ok) return data;
   if (res.status === 401 && data.code === 'drive_token') {
-    if (retry) return request(method, path, body, { drive }, false);
+    if (retry) return send(method, path, body, { drive }, false);
     throw new ReauthRequired(data.error);
   }
   throw new ApiError(res.status, data.error ?? `エラー (${res.status})`);
