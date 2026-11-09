@@ -849,7 +849,7 @@ const actions = {
   async "delete-account"() {
     if (!(await confirmDialog(t("confirmDelAccount"), t("del"), true))) return;
     toTimerScreen();
-    busy.show(t("deleting"));
+    busy.show(t("deletingAccount"));
     let ok;
     try {
       ok = await guarded(() => api.deleteAccount());
