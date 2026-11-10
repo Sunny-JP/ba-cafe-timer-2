@@ -1,6 +1,6 @@
 // デモ画面 (/demo.html) 用の見本データ。使い方ガイドのスクリーンショット用で、画面を見せるだけ (保存・通信は一切しない)。
 // 生徒名・贈物・EXP 表はすべて架空のもの。実際のゲームデータ (ログイン後に取得するもの) は使わない。
-import { loadGameData } from '../data/gifts.js';
+import { loadGameData } from '../../data/gifts.js';
 import { loadNames } from './i18n.js';
 import { logicalDay, logicalMonth } from './time.js';
 

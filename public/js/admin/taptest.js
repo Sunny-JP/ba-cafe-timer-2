@@ -1,5 +1,5 @@
-import { api } from '../api.js';
-import { showForegroundNotifications } from '../push.js';
+import { api } from '../features/api.js';
+import { showForegroundNotifications } from '../features/push.js';
 import { $, initAdminPage } from './common.js';
 
 const jst = (iso) => new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false });

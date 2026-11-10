@@ -6,7 +6,7 @@
 
 - Edge (ヘッドレス) と Pillow が必要。出力は public/img/guide/<言語>/<名前>.png
 - 幅 390px の iframe にデモを入れて撮るので、スマホ幅のレイアウトになる。
-- 見本のデータは public/js/demo.js。撮る画面を増やすときは SHOTS に足す。
+- 見本のデータは public/js/features/demo.js。撮る画面を増やすときは SHOTS に足す。
 """
 
 import argparse

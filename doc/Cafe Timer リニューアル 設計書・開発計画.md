@@ -61,7 +61,7 @@ Cloud Functions は使わないため Blaze プランは不要。すべて無料
 cafetimer/
 ├─ public/                      # Workers Static Assets としてそのまま配信
 │  ├─ index.html                # マークアップ
-│  ├─ js/docs.js                # 規約・FAQ・ガイド等 (pages.tsx の代替)
+│  ├─ js/screens/docs.js                # 規約・FAQ・ガイド等 (pages.tsx の代替)
 │  ├─ manifest.webmanifest
 │  ├─ firebase-messaging-sw.js  # FCM 用 (ルート固定が必須)
 │  ├─ css/app.css               # スタイル
@@ -175,7 +175,7 @@ cafetimer/
 - 秘密情報(サービスアカウント JSON など)は `wrangler secret` に置く。リポジトリには含めない
 - 外部スクリプトは CDN から読み込み、バージョンを固定する
 - 現行の秘密情報(Supabase の DB パスワード、Discord の Client Secret、OneSignal の REST API Key)は、構成図PDFとチャットに実値が含まれていたため、ローテーションまたは失効させる
-- 利用規約・プライバシーポリシー(js/docs.js)を新構成に合わせて書き直す
+- 利用規約・プライバシーポリシー(js/screens/docs.js)を新構成に合わせて書き直す
 
 ## 11. 移行計画
 

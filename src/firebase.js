@@ -1,7 +1,7 @@
 // Firebase ID トークン検証・Firestore (REST)・FCM HTTP v1。
 // 秘密情報: env.FIREBASE_SERVICE_ACCOUNT (wrangler secret)、env.FIREBASE_PROJECT_ID (vars)
 
-import { uuidv7 } from "../public/js/time.js";
+import { uuidv7 } from "../public/js/features/time.js";
 
 const b64urlToBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 const bytesToB64url = (buf) =>

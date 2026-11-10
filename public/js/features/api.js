@@ -14,7 +14,7 @@ export class ApiError extends Error {
 let writeQueue = Promise.resolve();
 function request(method, path, body, opts, retry) {
   if (method === 'GET') return send(method, path, body, opts, retry);
-  log.info('api', `書き込みキューに追加 ${method} ${path}`);
+  log.info('api', `queued write: ${method} ${path} (waiting for earlier writes)`);
   const run = writeQueue.then(() => send(method, path, body, opts, retry));
   writeQueue = run.catch(() => {});
   return run;
@@ -22,29 +22,32 @@ function request(method, path, body, opts, retry) {
 
 let seq = 0;
 async function send(method, path, body, { drive = true } = {}, retry = true) {
-  const id = ++seq;
-  const tag = `#${id} ${method} ${path}`;
+  const tag = `#${++seq} ${method} ${path}`;
   const t0 = performance.now();
   const ms = () => `${Math.round(performance.now() - t0)}ms`;
-  // プッシュ通知トークンや丸ごとのインポートデータはログに出さない
-  const quiet = path.startsWith('/api/devices') || path.startsWith('/api/import') || path.startsWith('/api/auth');
-  log.info('api', `${tag} 開始${retry ? '' : ' (再試行)'}`, quiet ? undefined : body);
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+  log.info('api', `${tag} request${retry ? '' : ' (retry)'} online=${navigator.onLine} body=${payload ?? '(none)'}`);
   let res;
+  let text;
   try {
     const headers = { Authorization: `Bearer ${await getIdToken()}` };
-    log.info('api', `${tag} トークン取得 (${ms()})`);
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
-    res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    log.info('api', `${tag} got ID token (${ms()})`);
+    if (payload !== undefined) headers['Content-Type'] = 'application/json';
+    res = await fetch(path, { method, headers, body: payload });
+    text = await res.text();
   } catch (e) {
-    log.error('api', `${tag} 送信失敗 (${ms()}, online=${navigator.onLine})`, e);
+    log.error('api', `${tag} failed before a response (${ms()}, online=${navigator.onLine})`, e);
     throw e;
   }
-  const data = await res.json().catch(() => ({}));
-  if (res.ok) {
-    log.info('api', `${tag} 成功 ${res.status} (${ms()})`);
-    return data;
+  log.info('api', `${tag} response status=${res.status} (${ms()}) body=${text}`);
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = {};
+    log.warn('api', `${tag} response body is not valid JSON`);
   }
-  log.warn('api', `${tag} 失敗 ${res.status} (${ms()})`, { error: data.error, code: data.code });
+  if (res.ok) return data;
   if (res.status === 401 && data.code === 'drive_token') {
     if (retry) return send(method, path, body, { drive }, false);
     throw new ReauthRequired(data.error);

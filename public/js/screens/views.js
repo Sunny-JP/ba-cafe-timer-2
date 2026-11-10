@@ -1,7 +1,7 @@
 // タイマー / カレンダー / 絆 / メニュー の描画。状態は app.js が持ち、ここは HTML を組み立てるだけ。
-import { t, categoryName, getLang, giftName, studentName, studentNames, LANGS } from './i18n.js';
-import { UPDATE_LOGS } from './updates.js';
-import { BOND_MAX, CHARACTERS, RATE_COLOR, SPRITE, charName, favoriteGifts } from '../data/gifts.js';
+import { t, categoryName, getLang, giftName, studentName, studentNames, LANGS } from '../features/i18n.js';
+import { UPDATE_LOGS } from '../features/updates.js';
+import { BOND_MAX, CHARACTERS, RATE_COLOR, SPRITE, charName, favoriteGifts } from '../../data/gifts.js';
 import {
   TICKET_COOLDOWN,
   daySlots,
@@ -12,7 +12,7 @@ import {
   nextBoundary,
   nextTapTime,
   prevMonth,
-} from './time.js';
+} from '../features/time.js';
 
 export const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);

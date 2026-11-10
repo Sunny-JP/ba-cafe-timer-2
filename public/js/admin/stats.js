@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api } from '../features/api.js';
 import { $, esc, initAdminPage, toast } from './common.js';
 
 const fmt = (n) => (n === undefined || n === null ? '-' : Number(n).toLocaleString());

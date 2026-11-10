@@ -13,7 +13,7 @@ export const GIFT_EXP = {"nb":1,"na":1.5,"ns":2,"sa":1.5,"ss":2};
 // 好感度の表示色 (倍率 2.0: 赤 / 1.5: 橙 / 1.0: 青)
 export const RATE_COLOR = { 2: '#e5484d', 1.5: '#f5a524', 1: '#3b82f6' };
 
-// ---- ゲームデータ (ログイン後に GET /api/gamedata から読み込む。js/gamedata.js) ----
+// ---- ゲームデータ (ログイン後に GET /api/gamedata から読み込む。js/features/gamedata.js) ----
 // 参照先を変えずに中身だけ差し替えられるよう、空のまま export しておく。
 export const BOND_EXP = {};
 export const GIFTS = [];

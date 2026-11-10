@@ -39,8 +39,8 @@ Cloudflare Workers(API と静的ファイル配信)+ Firebase(認証・通知)+ 
 
 ### 認証
 
-1. ブラウザで Firebase Auth の Google ログインを行い、同時に Drive の `drive.appdata` スコープのアクセストークンを取得します([public/js/auth.js](public/js/auth.js))。
-2. API 呼び出しには、2 つのトークンを付けます([public/js/api.js](public/js/api.js))。
+1. ブラウザで Firebase Auth の Google ログインを行い、同時に Drive の `drive.appdata` スコープのアクセストークンを取得します([public/js/features/auth.js](public/js/features/auth.js))。
+2. API 呼び出しには、2 つのトークンを付けます([public/js/features/api.js](public/js/features/api.js))。
    - `Authorization: Bearer <Firebase ID トークン>` … Worker が公開鍵(JWK)で署名・有効期限・発行元を検証し、`uid` を得ます。
    - `X-Drive-Token: <Drive アクセストークン>` … Drive を使う API だけで必要です。
 3. Drive のトークンは期限が短いため、Google Identity Services で無音更新します。失敗した場合は再ログインの案内を出します。
@@ -67,7 +67,7 @@ Cloudflare Workers(API と静的ファイル配信)+ Firebase(認証・通知)+ 
 1. タップを記録すると([`POST /api/taps`](src/worker.js))、条件を満たす場合に `pending` へ送信予約(3 時間後)を作ります。
 2. Worker の cron(毎分)が、送信時刻を過ぎた予約を探し、そのユーザーの端末へ FCM HTTP v1 で送信します([src/firebase.js](src/firebase.js) の `sendDueNotifications`)。
 3. 無効になった端末トークンは、送信時に削除します。
-4. 通知をオンにすると、ブラウザで取得した FCM トークンを `PUT /api/devices` で登録します([public/js/push.js](public/js/push.js))。
+4. 通知をオンにすると、ブラウザで取得した FCM トークンを `PUT /api/devices` で登録します([public/js/features/push.js](public/js/features/push.js))。
 5. 画面を開いている間は、Service Worker ではなくページ側で通知を表示します(`showForegroundNotifications`)。
 
 ### API
@@ -88,7 +88,7 @@ Cloudflare Workers(API と静的ファイル配信)+ Firebase(認証・通知)+ 
 
 ### ゲームデータ
 
-絆 EXP 表・贈り物・キャラ・各言語の表示名は、`public/` の外の [src/data/gamedata.js](src/data/gamedata.js) にあります。ログイン後に `/api/gamedata` で一度だけ取得してから画面を描画します([public/js/gamedata.js](public/js/gamedata.js))。
+絆 EXP 表・贈り物・キャラ・各言語の表示名は、`public/` の外の [src/data/gamedata.js](src/data/gamedata.js) にあります。ログイン後に `/api/gamedata` で一度だけ取得してから画面を描画します([public/js/features/gamedata.js](public/js/features/gamedata.js))。
 
 ## ディレクトリ構成
 
@@ -122,8 +122,8 @@ doc/                        設計書・仕様書
 
 1. Firebase プロジェクトで Authentication(Google)・Firestore(ルール全拒否)・Cloud Messaging を有効化します。Google Cloud で Drive API を有効化し、OAuth 同意画面に `drive.appdata` を追加します。
 2. 次のプレースホルダを実際の値に置き換えます。
-   - `public/js/auth.js`: `firebaseConfig`、`GOOGLE_CLIENT_ID`
-   - `public/js/push.js`: `VAPID_KEY`(Cloud Messaging の Web プッシュ証明書の公開鍵)
+   - `public/js/features/auth.js`: `firebaseConfig`、`GOOGLE_CLIENT_ID`
+   - `public/js/features/push.js`: `VAPID_KEY`(Cloud Messaging の Web プッシュ証明書の公開鍵)
    - `public/firebase-messaging-sw.js`: Firebase 設定(`auth.js` と同じ値)
    - `wrangler.toml`: `FIREBASE_PROJECT_ID`
 3. サービスアカウントの JSON を登録します。
@@ -155,7 +155,7 @@ curl.exe "http://localhost:8787/__scheduled?cron=*+*+*+*+*"
 
 ## 開発メモ
 
-- `public/js/time.js` は DOM に依存しないため、Worker からも import しています。JST・4:00 区切りの計算は、ここだけに置いてください。
-- 画面の文言は `public/js/i18n.js` の辞書にあります。新しい文言は、4 言語分を追加してください。
+- `public/js/features/time.js` は DOM に依存しないため、Worker からも import しています。JST・4:00 区切りの計算は、ここだけに置いてください。
+- 画面の文言は `public/lang/*.json`(言語ごとのファイル)にあります。新しい文言は、4 言語分を追加してください。
 - 秘密情報(サービスアカウントなど)は Git に入れません。`.dev.vars` と `service-account.json` は `.gitignore` に入っています。
 - 運用者向けの内部資料は、Git 管理外のファイルにまとめています(担当者に確認してください)。

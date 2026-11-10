@@ -4,7 +4,7 @@
 // 変わっていれば差し替える。
 import { api } from './api.js';
 import { loadNames, registerStudentNames } from './i18n.js';
-import { loadGameData } from '../data/gifts.js';
+import { loadGameData } from '../../data/gifts.js';
 
 const KEY = 'ct.gamedata';
 let loading = null;

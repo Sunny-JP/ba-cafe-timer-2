@@ -1,7 +1,7 @@
 // 管理ページ共通: ログイン・権限確認・ナビ。権限の判定はサーバー(ADMIN_UIDS)が行い、ここでは表示のみ。
 // ページ自体は静的ファイルで認証前に配信される(ログインは Authorization ヘッダーのため)が、管理者でなければ / へ戻す。
-import { login, logout, onUser } from "../auth.js";
-import { api } from "../api.js";
+import { login, logout, onUser } from "../features/auth.js";
+import { api } from "../features/api.js";
 
 export const $ = (s) => document.querySelector(s);
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

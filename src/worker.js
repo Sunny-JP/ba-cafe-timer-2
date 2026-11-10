@@ -30,7 +30,7 @@ import {
   prevMonth,
   shouldScheduleNotification,
   uuidv7,
-} from '../public/js/time.js';
+} from '../public/js/features/time.js';
 
 class HttpError extends Error {
   constructor(status, message, code) {

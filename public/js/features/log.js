@@ -31,7 +31,7 @@ export const log = {
 // コンソールで window.ctLog() と打つと、直近のログを1つの文字列で返す
 window.ctLog = () => buf.join("\n");
 
-window.addEventListener("error", (e) => log.error("window", "未処理エラー", `${e.message} (${e.filename}:${e.lineno})`));
-window.addEventListener("unhandledrejection", (e) => log.error("window", "未処理のPromise拒否", e.reason instanceof Error ? e.reason : String(e.reason)));
-window.addEventListener("online", () => log.info("net", "オンラインに復帰"));
-window.addEventListener("offline", () => log.warn("net", "オフラインになった"));
+window.addEventListener("error", (e) => log.error("window", "uncaught error", `${e.message} (${e.filename}:${e.lineno})`));
+window.addEventListener("unhandledrejection", (e) => log.error("window", "unhandled promise rejection", e.reason instanceof Error ? e.reason : String(e.reason)));
+window.addEventListener("online", () => log.info("net", "back online"));
+window.addEventListener("offline", () => log.warn("net", "went offline"));

@@ -5,7 +5,7 @@
 importScripts("https://www.gstatic.com/firebasejs/11.0.2/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging-compat.js");
 
-// TODO: js/auth.js の firebaseConfig と同じ値にする
+// TODO: js/features/auth.js の firebaseConfig と同じ値にする
 firebase.initializeApp({
   apiKey: "AIzaSyCyC07Txb42uJD81IB2W3zuHspu0Ximd7A",
   authDomain: "ba-cafe-timer-2.firebaseapp.com",

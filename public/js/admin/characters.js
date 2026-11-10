@@ -1,7 +1,7 @@
-import { api } from '../api.js';
+import { api } from '../features/api.js';
 import { CHARACTERS, GIFTS, GIFT_EXP, RATE_COLOR, SPRITE, applyCatalog, favoriteGifts } from '../../data/gifts.js';
-import { studentNames } from '../i18n.js';
-import { ensureGameData } from '../gamedata.js';
+import { studentNames } from '../features/i18n.js';
+import { ensureGameData } from '../features/gamedata.js';
 import { $, esc, initAdminPage, toast } from './common.js';
 
 let catalog = { characters: [] };

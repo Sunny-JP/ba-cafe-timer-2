@@ -10,7 +10,7 @@ import {
   nextTapTime,
   daySlots,
   uuidv7,
-} from '../public/js/time.js';
+} from '../public/js/features/time.js';
 
 const jst = (s) => Date.parse(`${s}+09:00`);
 
