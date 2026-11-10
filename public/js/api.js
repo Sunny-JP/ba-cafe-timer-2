@@ -1,5 +1,6 @@
 // /api/* 呼び出しのみ。Firestore / Drive には直接触れない。
 import { getIdToken, ReauthRequired } from './auth.js';
+import { log } from './log.js';
 
 export class ApiError extends Error {
   constructor(status, message) {
@@ -13,17 +14,37 @@ export class ApiError extends Error {
 let writeQueue = Promise.resolve();
 function request(method, path, body, opts, retry) {
   if (method === 'GET') return send(method, path, body, opts, retry);
+  log.info('api', `書き込みキューに追加 ${method} ${path}`);
   const run = writeQueue.then(() => send(method, path, body, opts, retry));
   writeQueue = run.catch(() => {});
   return run;
 }
 
+let seq = 0;
 async function send(method, path, body, { drive = true } = {}, retry = true) {
-  const headers = { Authorization: `Bearer ${await getIdToken()}` };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const id = ++seq;
+  const tag = `#${id} ${method} ${path}`;
+  const t0 = performance.now();
+  const ms = () => `${Math.round(performance.now() - t0)}ms`;
+  // プッシュ通知トークンや丸ごとのインポートデータはログに出さない
+  const quiet = path.startsWith('/api/devices') || path.startsWith('/api/import') || path.startsWith('/api/auth');
+  log.info('api', `${tag} 開始${retry ? '' : ' (再試行)'}`, quiet ? undefined : body);
+  let res;
+  try {
+    const headers = { Authorization: `Bearer ${await getIdToken()}` };
+    log.info('api', `${tag} トークン取得 (${ms()})`);
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch (e) {
+    log.error('api', `${tag} 送信失敗 (${ms()}, online=${navigator.onLine})`, e);
+    throw e;
+  }
   const data = await res.json().catch(() => ({}));
-  if (res.ok) return data;
+  if (res.ok) {
+    log.info('api', `${tag} 成功 ${res.status} (${ms()})`);
+    return data;
+  }
+  log.warn('api', `${tag} 失敗 ${res.status} (${ms()})`, { error: data.error, code: data.code });
   if (res.status === 401 && data.code === 'drive_token') {
     if (retry) return send(method, path, body, { drive }, false);
     throw new ReauthRequired(data.error);

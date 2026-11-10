@@ -8,6 +8,7 @@ import { clearGameDataCache, ensureGameData, hasGameData } from "./gamedata.js";
 import { logicalMonth, nextMonth, prevMonth, uuidv7 } from "./time.js";
 import { noticeBanner, DEFAULT_ACCENT, MODES, WEEKDAYS, bondRecords, dayCounts, heatLevel, icon, langPicker, loader, renderBond, renderCalendar, renderDoc, renderLogList, renderMenu, renderSettings, renderTimer, skeleton, tick } from "./views.js";
 import { UPDATE_LOGS } from "./updates.js";
+import { log } from "./log.js";
 
 // /demo.html: 使い方ガイドのスクリーンショット用。見本のデータを表示するだけで、保存も通信もしない
 const DEMO = !!window.CT_DEMO;
@@ -23,6 +24,7 @@ const toast = (msg) => {
   const el = $("#toast");
   el.textContent = msg;
   el.hidden = false;
+  log.info("toast", msg);
   clearTimeout(toast.t);
   toast.t = setTimeout(() => (el.hidden = true), 3500);
 };
@@ -498,6 +500,7 @@ async function guarded(fn) {
   try {
     return await fn();
   } catch (e) {
+    log.error("guarded", `エラー: ${e?.name} / status=${e?.status ?? "-"} / autoLink=${autoLink}`, e);
     if (e instanceof ReauthRequired) {
       if (autoLink) {
         autoLink = false;
@@ -557,7 +560,9 @@ function primeBond(uid) {
 }
 
 async function loadAll() {
+  log.info("load", "bootstrap 読み込み開始");
   const data = await guarded(() => api.bootstrap(logicalMonth(Date.now())));
+  log.info("load", data ? `bootstrap 完了 taps=${data.taps?.length}` : "bootstrap 失敗");
   autoLink = false; // 連携済みだった場合は、あとで自動では開かない
   if (!data) return;
   Object.assign(state, {
@@ -581,6 +586,7 @@ async function loadDeferred() {
     return r;
   });
   state.deferredLoading = false;
+  log.info("load", rel ? `絆・ゲームデータ読み込み完了 relationship=${rel.relationship?.length}` : "絆・ゲームデータ読み込み失敗");
   if (!rel) return;
   state.relationship = rel.relationship;
   state.bondChar ??= store.get(
@@ -606,9 +612,11 @@ async function loadCalendar(month) {
 
 async function saveProfile(patch) {
   const before = state.profile;
+  log.info("profile", "保存開始 (楽観的に反映)", patch);
   state.profile = { ...before, ...patch };
   render();
   const data = await guarded(() => api.saveProfile(patch));
+  log.info("profile", data ? "保存成功" : "保存失敗 → 元に戻す", patch);
   if (data) {
     // 応答の profile 全体では、並行して行った別の更新(楽観的に反映済み)を巻き戻すことがある。送った項目だけ反映する
     const saved = {};
@@ -636,10 +644,13 @@ const loadPendingTaps = () => {
 const savePendingTaps = (list) => store.set("pendingTaps", JSON.stringify(list));
 async function flushPendingTaps() {
   let list = loadPendingTaps();
+  log.info("tap", `保留中のタップを送信: ${list.length}件`);
   while (list.length) {
     try {
       await api.tap(list[0]);
+      log.info("tap", "保留タップ送信成功", list[0]);
     } catch (e) {
+      log.warn("tap", "保留タップ送信失敗", e);
       // 通信・認証の問題なら残して次回へ。内容が不正(期限切れなど)なものは諦めて捨てる
       if (e instanceof ReauthRequired || !(e instanceof ApiError) || e.status >= 500 || e.status === 429) break;
     }
@@ -650,11 +661,19 @@ async function flushPendingTaps() {
 
 // ボタンを処理中表示(Loading…・無効)にして fn を実行する。処理中の連打は無視する
 async function withPending(key, fn) {
-  if (state.pending.has(key)) return;
+  if (state.pending.has(key)) {
+    log.warn("pending", `処理中のため無視: ${key}`);
+    return;
+  }
+  log.info("pending", `開始: ${key}`);
   state.pending.add(key);
   render();
   try {
     await fn();
+    log.info("pending", `完了: ${key}`);
+  } catch (e) {
+    log.error("pending", `例外: ${key}`, e);
+    throw e;
   } finally {
     state.pending.delete(key);
     render();
@@ -666,6 +685,7 @@ async function recordTap() {
   const prev = { lastTap: state.lastTap, monthTaps: state.monthTaps, calTaps: state.calTaps };
   const temp = { id: uuidv7(), tap_time: new Date().toISOString() };
   const onCurrent = state.calMonth === logicalMonth(Date.now());
+  log.info("tap", `タップ記録開始 id=${temp.id} calMonth=${state.calMonth} onCurrent=${onCurrent}`, temp.tap_time);
   state.lastTap = temp; // 楽観的更新
   state.monthTaps = [...state.monthTaps, temp];
   if (onCurrent) state.calTaps = state.monthTaps;
@@ -674,8 +694,10 @@ async function recordTap() {
   try {
     data = await api.tap();
   } catch (e) {
+    log.error("tap", "タップ送信失敗", e);
     if (e instanceof ReauthRequired) {
       // 再認証が必要でもタップは失わない: 端末に保存し、連携し直したあとに送る
+      log.warn("tap", "再認証待ちのため端末に保存");
       savePendingTaps([...loadPendingTaps(), temp]);
       showReauth();
       toast(t("tapQueued"));
@@ -685,6 +707,7 @@ async function recordTap() {
     toast(e.message);
   }
   if (data) {
+    log.info("tap", "サーバーに記録された", data.tap);
     state.lastTap = data.tap;
     state.monthTaps = state.monthTaps.map((t) => (t === temp ? data.tap : t));
     if (onCurrent) state.calTaps = state.monthTaps;
@@ -696,6 +719,7 @@ async function recordTap() {
     );
     if (!data.scheduled && state.pushOn) toast(t("noPushSchedule"));
   } else {
+    log.warn("tap", "記録できなかったため表示を元に戻す");
     Object.assign(state, prev);
   }
   render();
@@ -888,8 +912,15 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-act]");
   if (!b || b.disabled) return;
   const { act, n } = b.dataset;
+  log.info("click", `data-act="${act}"`, { ...b.dataset, handler: !!actions[act], demo: DEMO, online: navigator.onLine, user: state.user?.uid ?? null });
   if (DEMO && !DEMO_ACTIONS.has(act)) return;
-  actions[act]?.(b);
+  if (!actions[act]) log.warn("click", `未定義のアクション: ${act}`);
+  try {
+    const r = actions[act]?.(b);
+    if (r?.catch) r.catch((e) => log.error("click", `アクション失敗: ${act}`, e));
+  } catch (e) {
+    log.error("click", `アクション例外: ${act}`, e);
+  }
   // 押した結果で描き直されたボタンも、沈んだ状態からふわっと戻す
   if (!b.isConnected) {
     const { day } = b.dataset;
@@ -944,6 +975,7 @@ view.addEventListener("submit", async (e) => {
   const bond = { char_key: state.bondChar, bond_level: Number(f.get("bond_level")), recorded_at: f.get("recorded_at") };
   // 送信中はボタンを無効にして回転アイコンを出す (再描画すると入力中の値が消えるので、ボタンだけ触る)
   const btn = e.target.querySelector(".record");
+  log.info("bond", "絆の記録を送信", { ...bond, btnDisabled: btn.disabled });
   if (btn.disabled) return;
   btn.disabled = true;
   btn.classList.add("busy");
@@ -954,6 +986,7 @@ view.addEventListener("submit", async (e) => {
     btn.disabled = false;
     btn.classList.remove("busy");
   }
+  log.info("bond", data ? "絆の記録に成功" : "絆の記録に失敗", data?.item);
   if (data) {
     state.relationship = [...state.relationship, data.item];
     saveRelCache();
@@ -990,6 +1023,7 @@ document.addEventListener("error", (e) => (e.target.classList?.contains("dd-icon
 
 document.addEventListener("change", async (e) => {
   const kind = e.target.dataset.form;
+  if (kind) log.info("change", `data-form="${kind}"`, { value: e.target.type === "file" ? e.target.files?.[0]?.name : e.target.value });
   if (DEMO && kind !== "bond-char") return;
   if (kind === "bond-char") {
     state.bondChar = e.target.value;
@@ -1026,6 +1060,7 @@ document.addEventListener("change", async (e) => {
 document.querySelector("nav").addEventListener("click", (e) => {
   const b = e.target.closest("[data-tab]");
   if (!b) return;
+  log.info("nav", `タブ切替 ${state.tab} → ${b.dataset.tab}`, { bondReady: state.bondReady, deferredLoading: state.deferredLoading });
   if (state.tab === b.dataset.tab) return;
   state.tab = b.dataset.tab;
   render(true);
@@ -1033,11 +1068,17 @@ document.querySelector("nav").addEventListener("click", (e) => {
 });
 
 $("#login-btn").addEventListener("click", async () => {
+  log.info("auth", "ログインボタン押下");
   autoLink = true; // ログイン後、未連携ならそのまま Drive の認可へ進む
-  if (!(await guarded(login))) autoLink = false;
+  const u = await guarded(login);
+  log.info("auth", u ? "ログイン成功" : "ログイン失敗/中断");
+  if (!u) autoLink = false;
 });
 $("#reauth-btn").addEventListener("click", async () => {
-  if (await guarded(async () => api.linkDrive(await requestDriveCode()))) {
+  log.info("auth", "再認証ボタン押下");
+  const ok = await guarded(async () => api.linkDrive(await requestDriveCode()));
+  log.info("auth", ok ? "Drive再連携成功" : "Drive再連携失敗/中断");
+  if (ok) {
     $("#reauth").hidden = true;
     await flushPendingTaps();
     loadAll();
@@ -1092,6 +1133,7 @@ if (DEMO) {
   };
 
   onUser((user) => {
+    log.info("auth", `認証状態変化 uid=${user?.uid ?? "なし"} primed=${primed} hintUid=${hintUid ?? "なし"}`);
     if (primed && user?.uid !== hintUid) {
       resetUserData(); // 先に出していたのは別のユーザー (またはログアウト済み) のデータ
       primed = false;
