@@ -4,8 +4,8 @@
 // ・content / comment: 言語ごとの文字列 ({ ja, en, ko, zh })。ja だけで構わず、ない言語は ja を表示する
 export const UPDATE_LOGS = [
   {
-    id: "20261120",
-    date: "2026-11-20",
+    id: "20261127",
+    date: "2026-11-27",
     content: { ja: "システムをリニューアルしました。" },
     comment: { ja: "認証方式をGoogleに変更し、タップ履歴などのデータはユーザー個人のGoogle Driveに保存されるようになりました。これにより、データの消失リスクが大幅に減少します。" },
   },

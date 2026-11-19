@@ -526,7 +526,7 @@ html { overflow-x: clip; }
 .doc .note p:last-child { margin: 0; }
 .doc .note.info { background: color-mix(in srgb, var(--primary) 14%, transparent); }
 .doc .note.warn { background: color-mix(in srgb, var(--error) 14%, transparent); }
-.doc .log { list-style: none; padding: 0; max-height: 240px; overflow-y: auto; }
+.doc .log { list-style: none; padding: 0; }
 .doc .log li { display: flex; gap: 12px; font-size: .875rem; }
 .doc .log span { flex: none; width: 6.5em; color: var(--on-variant); font-variant-numeric: tabular-nums; }
 .doc .log small { display: block; margin-top: 2px; font-size: .8125rem; }

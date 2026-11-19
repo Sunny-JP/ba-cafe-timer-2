@@ -56,14 +56,13 @@ function openTab(tab, { closeMenu = false, top = false } = {}) {
 
 export const actions = {
   tap: recordTap,
-  // お知らせを押すと、更新情報 (運営者情報の変更履歴) のページを開き、この更新のお知らせは消す
+  // お知らせを押すと、変更履歴のページを開き、この更新のお知らせは消す
   async "notice-open"() {
     if (state.notice) store.set("seenUpdate", state.notice.id);
     state.notice = null;
-    state.doc = "operator";
+    state.doc = "changelog";
     state.docHtml = await loadDoc(state.doc);
     openTab("doc", { top: true });
-    document.querySelector("#view ul.log")?.scrollIntoView({ block: "start" });
   },
   "ticket-use"(b) {
     const k = `ticket${b.dataset.n}_time`;

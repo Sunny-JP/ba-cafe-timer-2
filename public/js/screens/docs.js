@@ -233,11 +233,16 @@ export const SKELETON = {
   <h3>{{operator.h2}}</h3>
   <p>{{operator.p2}}</p>
 
-  <h3>{{operator.h3}}</h3>
-  <ul class="log" data-update-log></ul>
-
   <h3>{{operator.h4}}</h3>
   <p>{{operator.p3}}</p>
+
+
+`,
+  changelog: `
+
+
+  <h2>{{changelog.title}}</h2>
+  <ul class="log" data-update-log></ul>
 
 
 `,
@@ -850,7 +855,7 @@ export const TEXT = {
     ko: `블루 아카이브 공략 Wiki 님(인연 랭크 표·학생별 선물 대응에 사용)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB(학생 이름 번역 등에 사용)<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
     zh: `蔚蓝档案攻略 Wiki（用于羁绊等级表及各学生礼物对应）<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB（用于学生姓名翻译等）<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
   },
-  "operator.h3": {
+  "changelog.title": {
     ja: `変更履歴`,
     en: `Change log`,
     ko: `변경 이력`,
