@@ -3,7 +3,7 @@ import { logout } from "./auth.js";
 import { disablePush, enablePush, pushEnabled } from "./push.js";
 import { setLang, t } from "./i18n.js";
 import { log } from "./log.js";
-import { nextMonth, prevMonth } from "./time.js";
+import { TICKET_COOLDOWN, nextMonth, prevMonth } from "./time.js";
 import { DEFAULT_ACCENT } from "../screens/views.js";
 import { DEMO, state, store } from "./state.js";
 import { saveCalendarImage } from "../screens/calendar-image.js";
@@ -55,7 +55,7 @@ function openTab(tab, { closeMenu = false, top = false } = {}) {
 }
 
 export const actions = {
-  tap: () => withPending("tap", recordTap),
+  tap: recordTap,
   // お知らせを押すと、更新情報 (運営者情報の変更履歴) のページを開き、この更新のお知らせは消す
   async "notice-open"() {
     if (state.notice) store.set("seenUpdate", state.notice.id);
@@ -65,7 +65,12 @@ export const actions = {
     openTab("doc", { top: true });
     document.querySelector("#view ul.log")?.scrollIntoView({ block: "start" });
   },
-  "ticket-use": (b) => withPending(`ticket${b.dataset.n}`, () => saveProfile({ [`ticket${b.dataset.n}_time`]: new Date().toISOString() })),
+  "ticket-use"(b) {
+    const k = `ticket${b.dataset.n}_time`;
+    const used = state.profile[k];
+    if (used && Date.parse(used) + TICKET_COOLDOWN > Date.now()) return; // 連打
+    saveProfile({ [k]: new Date().toISOString() });
+  },
   "dd-toggle": toggleDropdown,
   "dd-pick"(b) {
     closeDropdowns();

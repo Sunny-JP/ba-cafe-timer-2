@@ -1,44 +1,14 @@
-// タップの記録 (楽観的更新・再認証待ちの保留・処理中ボタンの制御)。
-import { ReauthRequired } from "./auth.js";
-import { ApiError, api } from "./api.js";
+// タップの記録と、処理中ボタンの制御。
 import { t } from "./i18n.js";
 import { log } from "./log.js";
-import { logicalMonth, uuidv7 } from "./time.js";
-import { state, store } from "./state.js";
+import { logicalMonth, nextTapTime, shouldScheduleNotification, uuidv7 } from "./time.js";
+import { state } from "./state.js";
 import { saveBootCache } from "./cache.js";
-import { showReauth } from "./guard.js";
+import { flush, queueTap } from "./outbox.js";
 import { render } from "../screens/render.js";
 import { toast } from "../screens/ui.js";
 
-// 再認証待ちで送れなかったタップ(押した時刻つき)。連携し直したあとに送る
-const loadPendingTaps = () => {
-  try {
-    const list = JSON.parse(store.get("pendingTaps", "[]"));
-    return Array.isArray(list) ? list : [];
-  } catch {
-    return [];
-  }
-};
-const savePendingTaps = (list) => store.set("pendingTaps", JSON.stringify(list));
-
-export async function flushPendingTaps() {
-  let list = loadPendingTaps();
-  log.info("tap", `flushPendingTaps: ${list.length} pending`);
-  while (list.length) {
-    try {
-      await api.tap(list[0]);
-      log.info("tap", "flushPendingTaps: sent", list[0]);
-    } catch (e) {
-      log.warn("tap", "flushPendingTaps: failed", e);
-      // 通信・認証の問題なら残して次回へ。内容が不正(期限切れなど)なものは諦めて捨てる
-      if (e instanceof ReauthRequired || !(e instanceof ApiError) || e.status >= 500 || e.status === 429) break;
-    }
-    list = list.slice(1);
-    savePendingTaps(list);
-  }
-}
-
-// ボタンを処理中表示(Loading…・無効)にして fn を実行する。処理中の連打は無視する
+// ボタンを処理中表示(回転アイコン・無効)にして fn を実行する。処理中の連打は無視する
 export async function withPending(key, fn) {
   if (state.pending.has(key)) {
     log.warn("pending", `ignored (already pending): ${key}`);
@@ -59,44 +29,23 @@ export async function withPending(key, fn) {
   }
 }
 
-// タップを記録する。記録できた(または端末に保存した)ら true
-export async function recordTap() {
-  const prev = { lastTap: state.lastTap, monthTaps: state.monthTaps, calTaps: state.calTaps };
-  const temp = { id: uuidv7(), tap_time: new Date().toISOString() };
-  const onCurrent = state.calMonth === logicalMonth(Date.now());
-  log.info("tap", `recordTap: start calMonth=${state.calMonth} onCurrent=${onCurrent} temp ->`, temp.tap_time);
-  state.lastTap = temp; // 楽観的更新
-  state.monthTaps = [...state.monthTaps, temp];
-  if (onCurrent) state.calTaps = state.monthTaps;
-  render();
-  let data;
-  try {
-    data = await api.tap();
-  } catch (e) {
-    log.error("tap", "recordTap: request failed", e);
-    if (e instanceof ReauthRequired) {
-      // 再認証が必要でもタップは失わない: 端末に保存し、連携し直したあとに送る
-      log.warn("tap", "recordTap: reauth required, saving tap to device");
-      savePendingTaps([...loadPendingTaps(), temp]);
-      showReauth();
-      toast(t("tapQueued"));
-      render();
-      return true;
-    }
-    toast(e.message);
+// タップを記録する。押した時点で ID と時刻を決めて端末に保存し、画面に反映して完了とする。
+// サーバーへは outbox.js が裏で送る (届くまで送り直す)
+export function recordTap() {
+  const now = Date.now();
+  if (state.lastTap && now < nextTapTime(Date.parse(state.lastTap.tap_time))) {
+    log.warn("tap", "recordTap: ignored (cooldown)");
+    return;
   }
-  if (data) {
-    log.info("tap", "recordTap: saved on server, tap ->", data.tap);
-    state.lastTap = data.tap;
-    state.monthTaps = state.monthTaps.map((x) => (x === temp ? data.tap : x));
-    if (onCurrent) state.calTaps = state.monthTaps;
-    saveBootCache();
-    log.info("push", data.scheduled ? `notification scheduled for ${new Date(data.send_at).toISOString()}` : "notification not scheduled");
-    if (!data.scheduled && state.pushOn) toast(t("noPushSchedule"));
-  } else {
-    log.warn("tap", "recordTap: not saved, restoring previous state");
-    Object.assign(state, prev);
-  }
+  const tap = { id: uuidv7(now), tap_time: new Date(now).toISOString() };
+  queueTap(tap); // 先に端末へ保存する (このあとアプリを閉じられても失わない)
+  log.info("tap", "recordTap: saved to device", tap);
+  state.lastTap = tap;
+  state.monthTaps = [...state.monthTaps, tap];
+  if (state.calMonth === logicalMonth(now)) state.calTaps = state.monthTaps;
+  saveBootCache();
   render();
-  return !!data;
+  // 通知を予約するかは押した時刻だけで決まるので、通信を待たずに知らせる
+  if (state.pushOn && !shouldScheduleNotification(now)) toast(t("noPushSchedule"));
+  flush();
 }

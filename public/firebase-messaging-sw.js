@@ -73,3 +73,82 @@ self.addEventListener("fetch", (event) => {
     })(),
   );
 });
+
+// ---- 3. 送信待ちの記録の送信 (Background Sync。対応ブラウザのみ) ----
+// アプリを閉じる直前に送り切れなかったタップ・チケットを、通信が戻ったときに送る。
+// 中身はページ (js/features/outbox.js) が IndexedDB に写したもの。ページ側も起動時に送り直すが、
+// サーバーは同じタップ ID を二重に記録しないので、どちらが先に送っても問題ない。
+
+const DB = "ct-outbox";
+const STORE = "kv";
+const idb = (mode, fn) =>
+  new Promise((resolve, reject) => {
+    const open = indexedDB.open(DB, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore(STORE);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction(STORE, mode);
+      const req = fn(tx.objectStore(STORE));
+      tx.oncomplete = () => {
+        db.close();
+        resolve(req?.result);
+      };
+      tx.onerror = () => reject(tx.error);
+    };
+  });
+const getOutbox = () => idb("readonly", (s) => s.get("outbox"));
+
+// 送れたもの (または内容が不正で送っても無駄なもの) を写しから外す。読み直してから外すので、ページの更新は消さない
+const removeSent = (tapId, profile) =>
+  idb("readwrite", (s) => {
+    const req = s.get("outbox");
+    req.onsuccess = () => {
+      const o = req.result;
+      if (!o) return;
+      if (tapId) o.taps = o.taps.filter((t) => t.id !== tapId);
+      if (profile) for (const k of Object.keys(profile)) if (o.profile[k] === profile[k]) delete o.profile[k];
+      if (!o.taps.length && !Object.keys(o.profile).length) s.delete("outbox");
+      else s.put(o, "outbox");
+    };
+  });
+
+const tokenExpired = (token) => {
+  try {
+    const { exp } = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return exp * 1000 < Date.now() + 30000;
+  } catch {
+    return true;
+  }
+};
+
+class Retry extends Error {}
+
+async function post(method, path, token, body) {
+  const res = await fetch(path, { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  // 通信・認証・サーバーの一時的な障害は、ブラウザに後でやり直してもらう。内容が不正 (400・重複 429 など) なら捨てる
+  if (!res.ok && (res.status >= 500 || res.status === 401 || res.status === 408)) throw new Retry(`HTTP ${res.status}`);
+}
+
+async function sendOutbox() {
+  // ページの送信 (閉じる直前の keepalive) が終わるのを少し待ち、送れた分が写しから外れてから読む
+  await new Promise((r) => setTimeout(r, 4000));
+  // アプリが開いていれば、ページが送る
+  const wins = await self.clients.matchAll({ type: "window" });
+  if (wins.some((w) => w.visibilityState === "visible")) return;
+  const o = await getOutbox();
+  // ID トークン (1時間有効) が切れていたら送れない。次にアプリを開いたときにページが送る
+  if (!o || !o.token || tokenExpired(o.token)) return;
+  for (const tap of o.taps) {
+    await post("POST", "/api/taps", o.token, tap);
+    await removeSent(tap.id, null);
+  }
+  if (Object.keys(o.profile).length) {
+    await post("PUT", "/api/profile", o.token, o.profile);
+    await removeSent(null, o.profile);
+  }
+}
+
+self.addEventListener("sync", (event) => {
+  if (event.tag === "ct-outbox") event.waitUntil(sendOutbox());
+});

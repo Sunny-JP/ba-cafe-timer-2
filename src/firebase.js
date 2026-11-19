@@ -209,8 +209,9 @@ export async function countUsers(env) {
   }
 }
 
-export async function addPending(env, uid, sendAtMs) {
-  await fs(env, `/pending/${uuidv7()}`, {
+// id を渡すと、同じ id での再予約は上書きになる(タップの再送で通知が二重にならない)
+export async function addPending(env, uid, sendAtMs, id = uuidv7()) {
+  await fs(env, `/pending/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ fields: { uid: { stringValue: uid }, sendAt: { timestampValue: new Date(sendAtMs).toISOString() } } }),
   });

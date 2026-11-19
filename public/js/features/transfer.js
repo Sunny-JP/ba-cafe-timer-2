@@ -6,6 +6,7 @@ import { guarded } from "./guard.js";
 import { loadAll } from "./data.js";
 import { toTimerScreen } from "../screens/render.js";
 import { busy, confirmDialog, downloadBlob, toast, withBusy } from "../screens/ui.js";
+import { discardOutbox } from "./outbox.js";
 
 export async function exportData() {
   const data = await withBusy(t("exporting"), 1, () => guarded(() => api.exportData()));
@@ -41,6 +42,7 @@ export async function deleteAccount() {
   toTimerScreen();
   const ok = await withBusy(t("deletingAccount"), 0, () => guarded(() => api.deleteAccount()));
   if (ok) {
+    discardOutbox(); // 未送信の記録を、消したあとに送り直さない
     toast(t("deleted"));
     await logout();
   }

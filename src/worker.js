@@ -1,5 +1,6 @@
 // ルーティングと cron。静的ファイルは Static Assets が配信し、/api/* だけここに来る。
 
+import { DurableObject } from 'cloudflare:workers';
 import { Drive, DriveError } from './drive.js';
 import { forgetAccessToken, getAccessToken, linkDrive, unlinkDrive } from './driveauth.js';
 import {
@@ -22,11 +23,12 @@ import {
 import { GIFT_EXP } from '../public/data/gifts.js';
 import { BOND_EXP, CATEGORY, CHARACTERS, GIFTS, GIFT_NAME, STUDENT_NAME } from './data/gamedata.js';
 import {
-  DUPLICATE_WINDOW,
+  TICKET_COOLDOWN,
   isMonth,
   isValidTimeZone,
   logicalMonth,
   monthRange,
+  nextTapTime,
   prevMonth,
   shouldScheduleNotification,
   uuidv7,
@@ -186,49 +188,68 @@ const routes = {
     return { month, taps: await readTaps(drive, month) };
   },
 
+  // 端末は押した時点で ID と時刻を決めて保存し、届くまで同じ内容で送り直す(js/features/outbox.js)。
+  // 同じ ID は二重に記録しない。ID・時刻が無い(古い端末の)リクエストはサーバーの時刻で記録する。
   'POST /api/taps': async ({ drive, env, uid, body, ctx }) => {
-    // 再認証待ちで端末に溜めていたタップは、押した時刻と ID を引き継いで保存する(7日以内・未来でないものだけ)
-    const queued = typeof body?.id === 'string' && typeof body?.tap_time === 'string' && Number.isFinite(Date.parse(body.tap_time));
-    const at = queued ? Date.parse(body.tap_time) : NaN;
-    if (queued && (at > Date.now() + 60000 || at < Date.now() - 7 * 864e5 || body.id.length > 64)) {
-      throw new HttpError(400, 'tap_time が不正です。');
+    const now = Date.now();
+    const given = body?.tap_time !== undefined || body?.id !== undefined;
+    const at = given ? Date.parse(body.tap_time) : now;
+    // id は通知予約の Firestore ドキュメント名にも使うので、英数字とハイフンだけにする
+    if (given && (typeof body.id !== 'string' || !/^[0-9A-Za-z-]{1,64}$/.test(body.id) || typeof body.tap_time !== 'string' || !Number.isFinite(at))) {
+      throw new HttpError(400, 'tap が不正です。');
     }
-    const now = queued ? at : Date.now();
-    const month = logicalMonth(now);
+    if (at > now + 60000 || at < now - 7 * 864e5) throw new HttpError(400, 'tap_time が不正です。'); // 7日以内・未来でないものだけ
+    const id = given ? body.id : uuidv7(at);
+
+    // 通知の予約は、Drive より速い Firestore へ真っ先に始める(押してすぐアプリを閉じられても通知は確保しやすい)。
+    // 予約の ID はタップの ID なので、再送しても1件のまま。送り直しで遅れて届いたタップは、まだ先の通知だけ予約する。
+    // 通知の失敗でタップの記録は失敗させない
+    const sendAt = shouldScheduleNotification(at);
+    const scheduling =
+      sendAt && sendAt > now && env.FIREBASE_SERVICE_ACCOUNT
+        ? addPending(env, uid, sendAt, id).then(
+            () => true,
+            (e) => {
+              console.error('schedule notification failed', e?.message); // 原因調査のためログは残す
+              return false;
+            },
+          )
+        : Promise.resolve(false);
+
+    const month = logicalMonth(at);
     const taps = await readTaps(drive, month);
-    if (queued) {
-      const dup = taps.find((t) => t.id === body.id);
-      if (dup) return { tap: dup, scheduled: false }; // 再送されても二重に記録しない
-    } else {
-      const last = await lastTap(drive, month, taps);
-      if (last && now - Date.parse(last.tap_time) < DUPLICATE_WINDOW) throw new HttpError(429, '直前に記録済みです。');
-    }
-    const tap = { id: queued ? body.id : uuidv7(now), tap_time: new Date(now).toISOString() };
+    const dup = taps.find((t) => t.id === id);
+    if (dup) return { tap: dup, scheduled: await scheduling }; // 再送されても二重に記録しない
+    // 別の端末で記録済みのタップのクールダウン中なら、二重の記録として拒否する(先にサーバーへ届いた方を残す)。
+    // クールダウンは 4:00 / 16:00 を跨がないので、月を跨いで比べる必要はない
+    const overlaps = (t) => {
+      const s = Date.parse(t.tap_time);
+      return t.id !== id && (s <= at ? at < nextTapTime(s) : s < nextTapTime(at));
+    };
+    if (taps.some(overlaps)) throw new HttpError(409, '他の端末で記録済みです。', 'conflict');
+
+    const tap = { id, tap_time: new Date(at).toISOString() };
     await drive.write(tapsFile(month), { taps: [...taps, tap].sort((a, b) => (a.tap_time < b.tap_time ? -1 : a.tap_time > b.tap_time ? 1 : 0)) });
     // 統計は応答を待たせず、返したあとに加算する
-    ctx.waitUntil(bumpStats(env, Object.fromEntries(tapKeys(now).map((k) => [k, 1]))));
-    if (queued) return { tap, scheduled: false };
-
-    // 通知の失敗でタップの記録は失敗させない
-    let scheduled = false;
-    const sendAt = shouldScheduleNotification(now);
-    if (sendAt && env.FIREBASE_SERVICE_ACCOUNT) {
-      try {
-        await addPending(env, uid, sendAt);
-        scheduled = true;
-      } catch (e) {
-        // 通知予約のみ失敗。タップは記録済みなので握りつぶすが、原因調査のためログは残す
-        console.error('schedule notification failed', e?.message);
-      }
-    }
+    ctx.waitUntil(bumpStats(env, Object.fromEntries(tapKeys(at).map((k) => [k, 1]))));
+    const scheduled = await scheduling;
     return { tap, scheduled, send_at: scheduled ? new Date(sendAt).toISOString() : null };
   },
 
   'PUT /api/profile': async ({ drive, body }) => {
     const profile = await readProfile(drive);
+    const conflicts = [];
     for (const k of ['ticket1_time', 'ticket2_time']) {
       if (k in body) {
         if (body[k] !== null && !isIso(body[k])) throw new HttpError(400, `${k} が不正です。`);
+        // 記録済みの使用から 20 時間以内の使用(別の端末での二重の記録)や、それより古い時刻(遅れて届いた送信)は
+        // 反映せず、先にサーバーへ届いた記録を残す。同じ値の再送はそのまま受け付ける
+        const cur = profile[k] && Date.parse(profile[k]);
+        const next = body[k] && Date.parse(body[k]);
+        if (cur && next && next !== cur && next < cur + TICKET_COOLDOWN) {
+          conflicts.push(k);
+          continue;
+        }
         profile[k] = body[k];
       }
     }
@@ -238,7 +259,7 @@ const routes = {
     }
     profile.updated_at = new Date().toISOString();
     await drive.write('profile.json', profile);
-    return { profile };
+    return { profile, conflicts };
   },
 
   'GET /api/relationship': async ({ drive, env, uid, ctx }) => {
@@ -493,35 +514,21 @@ const routes = {
 // Drive を使わないルート
 const NO_DRIVE = new Set(['PUT /api/devices', 'DELETE /api/devices', 'POST /api/auth/drive', 'GET /api/catalog', 'GET /api/gamedata']);
 
-async function handle(request, env, ctx) {
-  const url = new URL(request.url);
-  const key = `${request.method} ${url.pathname}`;
-  const route = routes[key];
-  if (!route) throw new HttpError(404, 'Not Found');
+// Drive を書き換えるルート。ユーザーごとの Durable Object (UserStore) で1本ずつ処理する。
+// サーバーは Drive のファイルを「読む→書き換える→丸ごと上書き」するので、別の端末からの書き込みが同時に走ると
+// 片方が消える。同じユーザーの書き込みを必ず同じオブジェクトに集め、順番に処理して防ぐ。
+const SERIALIZED = new Set(['POST /api/taps', 'PUT /api/profile', 'POST /api/relationship', 'DELETE /api/relationship', 'DELETE /api/account', 'POST /api/import']);
 
-  const bearer = /^Bearer (.+)$/.exec(request.headers.get('Authorization') ?? '')?.[1];
-  const uid = bearer && (await verifyIdToken(bearer, env.FIREBASE_PROJECT_ID));
-  if (!uid) throw new HttpError(401, '認証が必要です。', 'id_token');
-
-  if (isAdminRoute(key) && !isAdmin(env, uid)) throw new HttpError(403, '管理者ではありません。');
-
+// 認証済みの uid でルートを実行する (Worker と UserStore の両方から呼ぶ)
+async function execute({ env, ctx, key, uid, body, url }) {
   let drive = null;
   if (!NO_DRIVE.has(key) && !isAdminRoute(key)) {
     const driveToken = await getAccessToken(env, uid);
     if (!driveToken) throw new HttpError(401, 'Drive の認証が必要です。', 'drive_token');
-    drive = new Drive(driveToken);
-  }
-
-  let body = {};
-  if (request.method !== 'GET') {
-    try {
-      body = (await request.json()) ?? {};
-    } catch {
-      /* ボディなし */
-    }
+    drive = new Drive(driveToken, uid);
   }
   try {
-    return json(await route({ request, env, ctx, url, uid, drive, body }));
+    return await routes[key]({ env, ctx, url, uid, drive, body });
   } catch (e) {
     if (e instanceof DriveError && (e.status === 401 || e.status === 403)) {
       forgetAccessToken(uid); // 失効していたら、次の呼び出しで取り直す
@@ -531,10 +538,62 @@ async function handle(request, env, ctx) {
   }
 }
 
+// ユーザーごとに1つ。書き込みを受け取った順に1本ずつ処理する。
+// Drive のアクセストークンとファイル一覧もここに残るので (driveauth.js / drive.js のキャッシュ)、2回目以降は速い。
+// 何も保存しない (状態はメモリの待ち行列だけ)
+export class UserStore extends DurableObject {
+  #queue = Promise.resolve();
+
+  // RPC で例外の型は保てないので、結果を { data } / { error } で返す
+  run(key, uid, body, href) {
+    const job = this.#queue.then(() => execute({ env: this.env, ctx: this.ctx, key, uid, body, url: new URL(href) }));
+    this.#queue = job.catch(() => {});
+    return job.then(
+      (data) => ({ data }),
+      (e) => {
+        if (e instanceof HttpError) return { error: { status: e.status, message: e.message, code: e.code } };
+        console.error('unhandled error in UserStore', e?.name);
+        return { error: { status: 500, message: 'サーバーエラーが発生しました。' } };
+      },
+    );
+  }
+}
+
+async function handle(request, env, ctx) {
+  const url = new URL(request.url);
+  const key = `${request.method} ${url.pathname}`;
+  if (!routes[key]) throw new HttpError(404, 'Not Found');
+
+  const bearer = /^Bearer (.+)$/.exec(request.headers.get('Authorization') ?? '')?.[1];
+  const uid = bearer && (await verifyIdToken(bearer, env.FIREBASE_PROJECT_ID));
+  if (!uid) throw new HttpError(401, '認証が必要です。', 'id_token');
+
+  if (isAdminRoute(key) && !isAdmin(env, uid)) throw new HttpError(403, '管理者ではありません。');
+
+  let body = {};
+  if (request.method !== 'GET') {
+    try {
+      body = (await request.json()) ?? {};
+    } catch {
+      /* ボディなし */
+    }
+  }
+
+  if (SERIALIZED.has(key) && env.USER_STORE) {
+    const r = await env.USER_STORE.get(env.USER_STORE.idFromName(uid)).run(key, uid, body, url.href);
+    if (r.error) throw new HttpError(r.error.status, r.error.message, r.error.code);
+    return json(r.data);
+  }
+  return json(await execute({ env, ctx, key, uid, body, url }));
+}
+
 export default {
   async fetch(request, env, ctx) {
     try {
-      return await handle(request, env, ctx);
+      const work = handle(request, env, ctx);
+      // 書き込みは、端末が途中で切断しても(押してすぐアプリを閉じられても)最後まで処理する
+      if (request.method !== 'GET') ctx.waitUntil(work.catch(() => {}));
+      return await work;
     } catch (e) {
       if (e instanceof HttpError) return json({ error: e.message, code: e.code }, e.status);
       // トークン等を含み得るため、詳細はログに出さない

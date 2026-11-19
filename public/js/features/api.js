@@ -3,9 +3,10 @@ import { getIdToken, ReauthRequired } from './auth.js';
 import { log } from './log.js';
 
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -33,7 +34,9 @@ async function send(method, path, body, { drive = true } = {}, retry = true) {
     const headers = { Authorization: `Bearer ${await getIdToken()}` };
     log.info('api', `${tag} got ID token (${ms()})`);
     if (payload !== undefined) headers['Content-Type'] = 'application/json';
-    res = await fetch(path, { method, headers, body: payload });
+    // 書き込みは keepalive: 送信を始めたあとにアプリを閉じても最後まで送られる (本文 64KB までの制限がある)
+    const keepalive = method !== 'GET' && (payload?.length ?? 0) < 60000;
+    res = await fetch(path, { method, headers, body: payload, keepalive });
     text = await res.text();
   } catch (e) {
     log.error('api', `${tag} failed before a response (${ms()}, online=${navigator.onLine})`, e);
@@ -52,7 +55,7 @@ async function send(method, path, body, { drive = true } = {}, retry = true) {
     if (retry) return send(method, path, body, { drive }, false);
     throw new ReauthRequired(data.error);
   }
-  throw new ApiError(res.status, data.error ?? `エラー (${res.status})`);
+  throw new ApiError(res.status, data.error ?? `エラー (${res.status})`, data.code);
 }
 
 export const api = {

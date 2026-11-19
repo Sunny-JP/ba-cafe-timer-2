@@ -7,7 +7,7 @@ import { langPicker } from "./views.js";
 import { loadDoc } from "./doc.js";
 import { guarded, link } from "../features/guard.js";
 import { loadAll } from "../features/data.js";
-import { flushPendingTaps } from "../features/taps.js";
+import { flush } from "../features/outbox.js";
 import { $, closeOnOutsideClick } from "./ui.js";
 
 export const renderLoginLang = () => ($("#login-lang").innerHTML = langPicker(getLang()));
@@ -42,7 +42,7 @@ export function initLoginScreen() {
     log.info("auth", ok ? "reauth: Drive linked" : "reauth: failed or cancelled");
     if (ok) {
       $("#reauth").hidden = true;
-      await flushPendingTaps();
+      await flush();
       loadAll();
     }
   });

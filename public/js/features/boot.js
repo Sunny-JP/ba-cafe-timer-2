@@ -6,11 +6,11 @@ import { clearGameDataCache } from "./gamedata.js";
 import { log } from "./log.js";
 import { state, store } from "./state.js";
 import { applyBoot, clearUserCaches, loadBootCache, primeBond } from "./cache.js";
-import { loadAll, resetUserData } from "./data.js";
+import { loadAll, refresh, resetUserData } from "./data.js";
 import { loadDoc } from "../screens/doc.js";
 import { render, renderMenuBody } from "../screens/render.js";
 import { applyTheme } from "../screens/theme.js";
-import { flushPendingTaps } from "./taps.js";
+import { flush, initOutbox, onRefreshNeeded } from "./outbox.js";
 import { $, show } from "../screens/ui.js";
 
 export async function startDemo() {
@@ -41,6 +41,10 @@ function onSignedOut() {
 }
 
 export function startApp() {
+  initOutbox();
+  onRefreshNeeded(refresh);
+  // 前面に戻ったら読み直す (開いたままの端末にも、別の端末で記録した分を反映する)
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refresh());
   // 前回ログインしたユーザーの保存データがあれば、認証の確定 (数百ms〜1秒) を待たずに先に描画する。
   // 認証が別の結果になったとき (ログアウト済み・別ユーザー) は、下の onUser で切り替える。
   const hintUid = store.get("uid", "", null);
@@ -74,9 +78,12 @@ export function startApp() {
     }
     // 通知の受信設定 (firebase-messaging の読み込みを含む) は、画面が出たあとの空き時間に行う
     (window.requestIdleCallback ?? setTimeout)(() => showForegroundNotifications().catch(() => {}));
-    flushPendingTaps()
-      .then(loadAll)
+    // 前回送れなかった操作は、読み込みを待たずにすぐ送る (読み込んだデータには未送信分を重ねて表示する)。
+    // 読み込みの中で Drive を自動連携した場合に備えて、読み込みのあとにもう一度送る
+    flush();
+    loadAll()
       .finally(() => {
+        flush();
         // 取得に失敗した場合も、読み込み表示のまま止まらないようにする
         state.loading = false;
         render();

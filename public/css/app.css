@@ -329,7 +329,7 @@ dialog#menu[open] { transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
-  .spinner { animation-duration: 2s !important; }
+  .spinner, .btn-spin, .sync { animation-duration: 2s !important; }
 }
 
 /* ---- メニューの調整 ---- */
@@ -791,3 +791,19 @@ label.menu-item:focus-visible { outline: 2px solid var(--primary); outline-offse
 .slot.sk { color: transparent; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+
+/* 処理中のボタン: 文字の代わりに回転アイコン */
+.btn-spin {
+  display: inline-block; width: 18px; height: 18px; vertical-align: middle; border-radius: 50%;
+  border: 2.5px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor;
+  animation: spin .8s linear infinite;
+}
+/* ヘッダーの同期中表示: まだサーバーに届いていない操作があるときだけ、小さく回す。
+   送れずに再送待ちのときは止めて薄い点にする */
+.sync {
+  align-self: center; width: 14px; height: 14px; margin-right: 6px; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--on-variant) 25%, transparent); border-top-color: var(--on-variant);
+  opacity: .7; animation: spin 1.2s linear infinite;
+}
+.sync[hidden] { display: none; }
+.sync.waiting { animation: none; border-color: var(--on-variant); opacity: .45; width: 8px; height: 8px; margin-inline: 3px 9px; }
