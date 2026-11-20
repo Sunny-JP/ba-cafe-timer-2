@@ -1,40 +1,21 @@
-// public/js/*.js と public/css/app.css を public/dist/ にまとめて最小化する。
-// - dist/app.js   : 通常のアプリ (index.html)
-// - dist/demo.js  : デモ用 (demo.html)。見本データの js/features/demo.js だけを含める
-// - dist/docs.js  : 文書。メニューで開いたときに初めて読み込む別ファイル (i18n 等に依存しないので重複しない)
-// - dist/app.css  : 最小化した CSS
-// Firebase SDK など https:// の import はそのまま残す (CDN から読み込む)。
-import { build } from 'esbuild';
-import { rm } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
+// public/js と public/css/app.css を束ねて最小化する (wrangler dev / deploy の前に自動で実行される)。
+// 出力: dist/app.js・admin.js・demo.js (あとから読み込む部分は dist/chunks/)、dist/app.css、firebase-messaging-sw.js
+import { build } from "esbuild";
+import { rm } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const out = path.join(root, 'public/dist');
-await rm(out, { recursive: true, force: true });
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const publicPath = (relative) => path.join(root, "public", relative);
+const outdir = publicPath("dist");
+await rm(outdir, { recursive: true, force: true });
 
-// import("./docs.js") は束ねず、dist/docs.js への相対参照のまま残す
-const keepDocsSeparate = {
-  name: 'keep-docs-separate',
-  setup(b) {
-    b.onResolve({ filter: /^\.\/docs\.js$/ }, () => ({ path: './docs.js', external: true }));
-  },
-};
-
-const common = {
-  bundle: true,
-  format: 'esm',
-  target: 'es2022',
-  minify: true,
-  legalComments: 'none',
-  external: ['https://*'],
-  plugins: [keepDocsSeparate],
-  logLevel: 'info',
-};
+const common = { bundle: true, minify: true, target: "es2022", legalComments: "none", logLevel: "info" };
+const modules = { ...common, format: "esm", splitting: true, outdir, chunkNames: "chunks/[name]-[hash]" };
 
 await Promise.all([
-  build({ ...common, entryPoints: { app: path.join(root, 'public/js/app.js') }, outdir: out, define: { __DEMO_BUILD__: 'false' } }),
-  build({ ...common, entryPoints: { demo: path.join(root, 'public/js/app.js') }, outdir: out, define: { __DEMO_BUILD__: 'true' } }),
-  build({ ...common, entryPoints: { docs: path.join(root, 'public/js/screens/docs.js') }, outdir: out, plugins: [] }),
-  build({ entryPoints: { app: path.join(root, 'public/css/app.css') }, outdir: out, minify: true, bundle: false, logLevel: 'info' }),
+  build({ ...modules, entryPoints: { app: publicPath("js/app.js"), admin: publicPath("js/admin.js") }, define: { __DEMO_BUILD__: "false" } }),
+  build({ ...modules, entryPoints: { demo: publicPath("js/app.js") }, define: { __DEMO_BUILD__: "true" } }),
+  build({ ...common, format: "iife", entryPoints: [publicPath("js/sw.js")], outfile: publicPath("firebase-messaging-sw.js") }),
+  build({ ...common, bundle: false, entryPoints: { app: publicPath("css/app.css") }, outdir }),
 ]);

@@ -1,7 +1,7 @@
 # インポートファイル仕様
 
 旧 Cafe Timer から書き出したデータを、新アプリの設定画面からインポートするためのファイル仕様。
-実装は [src/worker.js](src/worker.js) の `POST /api/import`、UI 側は [public/js/features/forms.js](public/js/features/forms.js) の `data-form="import"`。
+実装は [src/worker.js](src/worker.js) の `POST /api/import`、UI 側は [public/js/data.js](public/js/data.js) の `importFile`。
 
 設定画面の「データのエクスポート」(`GET /api/export`)が出力するファイルは、この仕様どおりで、そのままインポートできる。
 
@@ -48,6 +48,7 @@
 取り込み時の処理:
 
 - 保存時に `tap_time` は `toISOString()` 形式に正規化される
+- **2024 年以前 (JST 2025-01-01 00:00 より前) と未来の `tap_time` は読み飛ばす** (`skipped` に計上)。件数の上限はない
 - 4:00 JST 区切りの**論理月**ごとに `taps-YYYY-MM.json` へ振り分けられる
 - 既存データと**同じ `id`** のタップは重複として読み飛ばす(`id` を省略した行は毎回新規 ID になるため、同じファイルを再取り込みすると重複する。旧データの ID は必ず付けること)
 - 保存後は `tap_time` 昇順に並べ替えられる
@@ -59,7 +60,7 @@
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `char_key` | string | 必須 | キャラクターのキー。空文字不可、64 文字以内。例: `airi`, `airi_band`, `azusa_swimsuit`。キー一覧は [src/data/gamedata.js](src/data/gamedata.js) の `CHARACTERS[].key` |
+| `char_key` | string | 必須 | キャラクターのキー。空文字不可、64 文字以内。例: `airi`, `airi_band`, `azusa_swimsuit`。キー一覧は [src/gamedata.js](src/gamedata.js) の `CHARACTERS[].key` |
 | `bond_level` | integer | 必須 | 絆ランク。**1〜100 の整数**(小数・文字列は不可) |
 | `recorded_at` | string | 必須 | 記録日。**`YYYY-MM-DD` 形式のみ**(時刻付きは不可) |
 | `id` | string | 任意 | UUID。形式が合えば保持、なければ新規生成 |
@@ -68,7 +69,7 @@
 
 取り込み時の処理:
 
-- 上記の必須条件を満たさない行は読み飛ばす(`skipped` に計上)
+- 上記の必須条件を満たさない行と、`recorded_at` が 2024 年以前 (`2025-01-01` より前) の行は読み飛ばす(`skipped` に計上)
 - **`(char_key, bond_level)` が既存データと同じ行は重複として読み飛ばす**(ファイル内の重複も、先に処理された方だけが残る)
 - `char_key` が `gamedata.js` に存在するかは**検証しない**。旧アプリのキーが新アプリのキャラ一覧にない場合、取り込みは成功するが画面には表示されない可能性がある
 - `relationship` が配列でない場合は、そのキーごと無視される
@@ -104,4 +105,4 @@
 - 取り込みは何度実行しても安全(追加のみで、既存データを削除しない)。ただし `taps` は `id` が揃っている場合に限る
 - ファイル全体が 1 回のリクエストで送られる。サイズ上限は Cloudflare Workers のリクエスト上限に従うため、極端に大きいファイルは分割すること
 - 取り込みには Google ログインと Drive の認証(`X-Drive-Token`)が必要
-- 旧アプリ側の書き出し機能が出力する形式は、この仕様に合わせること(移行計画は [Cafe Timer リニューアル 設計書・開発計画.md](Cafe%20Timer%20リニューアル%20設計書・開発計画.md) の 11 章を参照)
+- 旧アプリ側の書き出し機能が出力する形式は、この仕様に合わせること(移行計画は [renewal plan.md](renewal%20plan.md) の 11 章を参照)

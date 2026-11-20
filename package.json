@@ -9,5 +9,9 @@
   "devDependencies": {
     "esbuild": "^0.25.0",
     "wrangler": "^4.158.0"
+  },
+  "dependencies": {
+    "chart.js": "^4.6.1",
+    "firebase": "^11.10.0"
   }
 }

@@ -1,330 +1,302 @@
-// Firebase ID トークン検証・Firestore (REST)・FCM HTTP v1。
-// 秘密情報: env.FIREBASE_SERVICE_ACCOUNT (wrangler secret)、env.FIREBASE_PROJECT_ID (vars)
+// Firebase の REST API: ID トークンの検証・Firestore・FCM による通知・Firebase Auth の管理 API
+// 秘密情報: env.FIREBASE_SERVICE_ACCOUNT (サービスアカウントの鍵 JSON)
+import { uuidv7 } from "../public/js/time.js";
 
-import { uuidv7 } from "../public/js/features/time.js";
-
-const b64urlToBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
-const bytesToB64url = (buf) =>
-  btoa(String.fromCharCode(...new Uint8Array(buf)))
+const base64UrlToBytes = (text) => Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (char) => char.charCodeAt(0));
+const bytesToBase64Url = (buffer) =>
+  btoa(String.fromCharCode(...new Uint8Array(buffer)))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
-const jsonB64url = (obj) => bytesToB64url(new TextEncoder().encode(JSON.stringify(obj)));
+const jsonToBase64Url = (value) => bytesToBase64Url(new TextEncoder().encode(JSON.stringify(value)));
 
-// ---- ID トークン検証 ----
+// ---- ID トークンの検証 ----
 
 const JWK_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
-let jwkCache = { keys: null, exp: 0 };
+let jwkCache = { keys: null, expiresAt: 0 };
 
-async function getJwks() {
-  if (jwkCache.keys && jwkCache.exp > Date.now()) return jwkCache.keys;
-  const res = await fetch(JWK_URL);
-  if (!res.ok) throw new Error("jwk fetch failed");
-  const maxAge = Number(/max-age=(\d+)/.exec(res.headers.get("cache-control") || "")?.[1] || 3600);
-  jwkCache = { keys: (await res.json()).keys, exp: Date.now() + maxAge * 1000 };
+async function getPublicKeys() {
+  if (jwkCache.keys && jwkCache.expiresAt > Date.now()) return jwkCache.keys;
+  const response = await fetch(JWK_URL);
+  if (!response.ok) throw new Error("jwk fetch failed");
+  const maxAge = Number(/max-age=(\d+)/.exec(response.headers.get("cache-control") || "")?.[1] || 3600);
+  jwkCache = { keys: (await response.json()).keys, expiresAt: Date.now() + maxAge * 1000 };
   return jwkCache.keys;
 }
 
-// 検証に成功すれば uid を返す。失敗時は null。
+// 署名・期限・発行先を確かめ、成功すればペイロード (sub = uid、iat = 発行時刻) を返す。失敗時は null
 export async function verifyIdToken(token, projectId) {
   try {
-    const [h, p, s] = token.split(".");
-    const header = JSON.parse(new TextDecoder().decode(b64urlToBytes(h)));
-    const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(p)));
+    const [headerPart, payloadPart, signaturePart] = token.split(".");
+    const header = JSON.parse(new TextDecoder().decode(base64UrlToBytes(headerPart)));
+    const payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payloadPart)));
     if (header.alg !== "RS256") return null;
-    const jwk = (await getJwks()).find((k) => k.kid === header.kid);
+    const jwk = (await getPublicKeys()).find((candidate) => candidate.kid === header.kid);
     if (!jwk) return null;
     const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-    const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64urlToBytes(s), new TextEncoder().encode(`${h}.${p}`));
+    const signed = new TextEncoder().encode(`${headerPart}.${payloadPart}`);
+    const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, base64UrlToBytes(signaturePart), signed);
     const now = Date.now() / 1000;
-    if (!ok || payload.exp < now || payload.iat > now + 60) return null;
+    if (!valid || payload.exp < now || payload.iat > now + 60) return null;
     if (payload.aud !== projectId || payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
-    return payload.sub || null;
+    return typeof payload.sub === "string" && payload.sub ? payload : null;
   } catch {
     return null;
   }
 }
 
-// ---- サービスアカウントのアクセストークン ----
+// ---- サービスアカウントのアクセストークン (期限まで使い回す) ----
 
-let saCache = { token: null, exp: 0 };
+let serviceTokenCache = { token: null, expiresAt: 0 };
 
 async function serviceToken(env) {
-  if (saCache.token && saCache.exp > Date.now() + 60000) return saCache.token;
-  const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
+  if (serviceTokenCache.token && serviceTokenCache.expiresAt > Date.now() + 60000) return serviceTokenCache.token;
+  const account = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
   const now = Math.floor(Date.now() / 1000);
-  const unsigned =
-    jsonB64url({ alg: "RS256", typ: "JWT" }) +
-    "." +
-    jsonB64url({
-      iss: sa.client_email,
-      scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging https://www.googleapis.com/auth/identitytoolkit",
-      aud: "https://oauth2.googleapis.com/token",
-      iat: now,
-      exp: now + 3600,
-    });
-  const der = b64urlToBytes(
-    sa.private_key
-      .replace(/-----[^-]+-----|\s/g, "")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_"),
-  );
-  const key = await crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
-  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const scope = [
+    "https://www.googleapis.com/auth/datastore",
+    "https://www.googleapis.com/auth/firebase.messaging",
+    "https://www.googleapis.com/auth/identitytoolkit",
+  ].join(" ");
+  const unsigned = `${jsonToBase64Url({ alg: "RS256", typ: "JWT" })}.${jsonToBase64Url({
+    iss: account.client_email,
+    scope,
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600,
+  })}`;
+  const keyBytes = base64UrlToBytes(account.private_key.replace(/-----[^-]+-----|\s/g, "").replace(/\+/g, "-").replace(/\//g, "_"));
+  const key = await crypto.subtle.importKey("pkcs8", keyBytes, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
+  const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: `${unsigned}.${bytesToB64url(sig)}`,
-    }),
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${unsigned}.${bytesToBase64Url(signature)}` }),
   });
-  if (!res.ok) throw new Error("service account auth failed");
-  const json = await res.json();
-  saCache = { token: json.access_token, exp: Date.now() + json.expires_in * 1000 };
-  return saCache.token;
+  if (!response.ok) throw new Error("service account auth failed");
+  const result = await response.json();
+  serviceTokenCache = { token: result.access_token, expiresAt: Date.now() + result.expires_in * 1000 };
+  return serviceTokenCache.token;
 }
 
-// ---- Firestore (devices / pending) ----
+// ---- Firestore ----
 
-const fsBase = (env) => `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+const documentsUrl = (env) => `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-async function fs(env, path, init = {}) {
-  const res = await fetch(`${fsBase(env)}${path}`, {
+// 404 はそのまま返し (呼び出し側で「無い」と扱う)、それ以外の失敗は例外にする
+async function firestore(env, path, init = {}) {
+  const response = await fetch(`${documentsUrl(env)}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${await serviceToken(env)}` },
   });
-  if (!res.ok && res.status !== 404) throw new Error(`firestore ${res.status}`);
-  return res;
+  if (!response.ok && response.status !== 404) throw new Error(`firestore ${response.status}`);
+  return response;
+}
+
+const writeJsonField = (env, path, value) =>
+  firestore(env, path, { method: "PATCH", body: JSON.stringify({ fields: { json: { stringValue: JSON.stringify(value) } } }) });
+
+async function readJsonField(env, path, fallback) {
+  const response = await firestore(env, path);
+  if (response.status === 404) return fallback;
+  try {
+    return JSON.parse((await response.json()).fields?.json?.stringValue ?? "null") ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function getDevices(env, uid) {
-  const res = await fs(env, `/devices/${uid}`);
-  if (res.status === 404) return [];
-  const doc = await res.json();
-  return (doc.fields?.tokens?.arrayValue?.values || []).map((v) => v.stringValue);
+  const response = await firestore(env, `/devices/${uid}`);
+  if (response.status === 404) return [];
+  return ((await response.json()).fields?.tokens?.arrayValue?.values ?? []).map((value) => value.stringValue);
 }
 
 export async function setDevices(env, uid, tokens) {
-  if (!tokens.length) {
-    await fs(env, `/devices/${uid}`, { method: "DELETE" });
-    return;
-  }
+  if (!tokens.length) return void (await firestore(env, `/devices/${uid}`, { method: "DELETE" }));
   const values = tokens.map((stringValue) => ({ stringValue }));
-  await fs(env, `/devices/${uid}`, { method: "PATCH", body: JSON.stringify({ fields: { tokens: { arrayValue: { values } } } }) });
+  await firestore(env, `/devices/${uid}`, { method: "PATCH", body: JSON.stringify({ fields: { tokens: { arrayValue: { values } } } }) });
 }
 
-// ---- Drive のリフレッシュトークン (暗号化済みの文字列だけを保存する) ----
-
+// Drive の暗号化済みリフレッシュトークン
 export async function getDriveAuth(env, uid) {
-  const res = await fs(env, `/driveAuth/${uid}`);
-  if (res.status === 404) return null;
-  return (await res.json()).fields?.enc?.stringValue ?? null;
+  const response = await firestore(env, `/driveAuth/${uid}`);
+  if (response.status === 404) return null;
+  return (await response.json()).fields?.enc?.stringValue ?? null;
 }
 
-export async function setDriveAuth(env, uid, enc) {
-  await fs(env, `/driveAuth/${uid}`, { method: "PATCH", body: JSON.stringify({ fields: { enc: { stringValue: enc } } }) });
+export async function setDriveAuth(env, uid, encrypted) {
+  await firestore(env, `/driveAuth/${uid}`, { method: "PATCH", body: JSON.stringify({ fields: { enc: { stringValue: encrypted } } }) });
 }
 
 export async function deleteDriveAuth(env, uid) {
-  await fs(env, `/driveAuth/${uid}`, { method: "DELETE" });
+  await firestore(env, `/driveAuth/${uid}`, { method: "DELETE" });
 }
 
-// ---- 管理画面用: カタログ (追加キャラ・贈物) と集計 ----
-
-let catalogCache = { value: null, exp: 0 };
+// 管理画面で追加したキャラ (30 秒キャッシュ)
 const EMPTY_CATALOG = { characters: [] };
+let catalogCache = { value: null, expiresAt: 0 };
 
 export async function getCatalog(env) {
-  if (catalogCache.value && catalogCache.exp > Date.now()) return catalogCache.value;
-  const res = await fs(env, "/config/catalog");
-  let value = EMPTY_CATALOG;
-  if (res.status !== 404) {
-    try {
-      value = JSON.parse((await res.json()).fields?.json?.stringValue ?? "null") ?? EMPTY_CATALOG;
-    } catch {
-      /* 壊れていたら空として扱う */
-    }
-  }
-  catalogCache = { value, exp: Date.now() + 30000 };
+  if (catalogCache.value && catalogCache.expiresAt > Date.now()) return catalogCache.value;
+  const value = await readJsonField(env, "/config/catalog", EMPTY_CATALOG);
+  catalogCache = { value, expiresAt: Date.now() + 30000 };
   return value;
 }
 
 export async function setCatalog(env, catalog) {
-  await fs(env, "/config/catalog", { method: "PATCH", body: JSON.stringify({ fields: { json: { stringValue: JSON.stringify(catalog) } } }) });
-  catalogCache = { value: catalog, exp: Date.now() + 30000 };
+  await writeJsonField(env, "/config/catalog", catalog);
+  catalogCache = { value: catalog, expiresAt: Date.now() + 30000 };
 }
 
-// 統計カウンタ (stats/counters)。個人を特定できる情報は持たず、数だけを加減算する。
+// ---- 統計 (件数の加減算だけで、個人を特定する情報は持たない) ----
+
 export async function addCounts(env, deltas) {
-  const entries = Object.entries(deltas).filter(([, n]) => n);
+  const entries = Object.entries(deltas).filter(([, delta]) => delta);
   if (!entries.length) return;
-  const base = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
-  await fs(env, ":commit", {
-    method: "POST",
-    body: JSON.stringify({
-      writes: [
-        {
-          transform: {
-            document: `${base}/stats/counters`,
-            fieldTransforms: entries.map(([k, n]) => ({ fieldPath: `\`${k}\``, increment: { integerValue: String(n) } })),
-          },
-        },
-      ],
-    }),
-  });
+  const document = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/stats/counters`;
+  const fieldTransforms = entries.map(([statKey, delta]) => ({ fieldPath: `\`${statKey}\``, increment: { integerValue: String(delta) } }));
+  await firestore(env, ":commit", { method: "POST", body: JSON.stringify({ writes: [{ transform: { document, fieldTransforms } }] }) });
 }
 
 export async function getCounts(env) {
-  const res = await fs(env, "/stats/counters");
-  if (res.status === 404) return {};
-  const fields = (await res.json()).fields ?? {};
-  return Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, Number(v.integerValue ?? 0)]));
+  const response = await firestore(env, "/stats/counters");
+  if (response.status === 404) return {};
+  const fields = (await response.json()).fields ?? {};
+  return Object.fromEntries(Object.entries(fields).map(([statKey, value]) => [statKey, Number(value.integerValue ?? 0)]));
 }
 
 export async function countDevices(env) {
-  const res = await fs(env, ":runAggregationQuery", {
+  const response = await firestore(env, ":runAggregationQuery", {
     method: "POST",
     body: JSON.stringify({
-      structuredAggregationQuery: {
-        structuredQuery: { from: [{ collectionId: "devices" }] },
-        aggregations: [{ count: {}, alias: "n" }],
-      },
+      structuredAggregationQuery: { structuredQuery: { from: [{ collectionId: "devices" }] }, aggregations: [{ count: {}, alias: "n" }] },
     }),
   });
-  return Number((await res.json())[0]?.result?.aggregateFields?.n?.integerValue ?? 0);
+  return Number((await response.json())[0]?.result?.aggregateFields?.n?.integerValue ?? 0);
 }
 
-// Firebase Auth の登録ユーザー数。権限が足りないなどで取れなければ null
+// ユーザーごとの「統計へ反映済みの絆の寄与」(差分の加算に使う)
+export const getBondStats = (env, uid) => readJsonField(env, `/statsBonds/${uid}`, {});
+export const setBondStats = (env, uid, counts) => writeJsonField(env, `/statsBonds/${uid}`, counts);
+
+// ---- Firebase Auth の管理 API ----
+
+const identityToolkit = async (env, action, body) =>
+  fetch(`https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await serviceToken(env)}` },
+    body: JSON.stringify(body),
+  });
+
+// 取れなければ null
 export async function countUsers(env) {
   try {
-    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:query`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await serviceToken(env)}` },
-      body: JSON.stringify({ returnUserInfo: false }),
-    });
-    return res.ok ? Number((await res.json()).recordsCount ?? 0) : null;
+    const response = await identityToolkit(env, "accounts:query", { returnUserInfo: false });
+    return response.ok ? Number((await response.json()).recordsCount ?? 0) : null;
   } catch {
     return null;
   }
 }
 
-// id を渡すと、同じ id での再予約は上書きになる(タップの再送で通知が二重にならない)
-export async function addPending(env, uid, sendAtMs, id = uuidv7()) {
-  await fs(env, `/pending/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ fields: { uid: { stringValue: uid }, sendAt: { timestampValue: new Date(sendAtMs).toISOString() } } }),
-  });
+// 無効化されておらず、トークンが失効処理 (validSince) より後に発行されたものか
+export async function isAccountActive(env, uid, issuedAt) {
+  const response = await identityToolkit(env, "accounts:lookup", { localId: [uid] });
+  if (!response.ok) throw new Error(`identitytoolkit ${response.status}`);
+  const user = (await response.json()).users?.[0];
+  return !!user && !user.disabled && issuedAt >= Number(user.validSince ?? 0);
 }
 
-async function queryPending(env, filter) {
-  const res = await fs(env, ":runQuery", {
+// ---- 通知の予約 (pending/{uid}_{タップ ID}) ----
+
+const pendingPath = (uid, id) => `/pending/${uid}_${id}`;
+
+export async function addPending(env, uid, sendAt, id = uuidv7()) {
+  const fields = { uid: { stringValue: uid }, sendAt: { timestampValue: new Date(sendAt).toISOString() } };
+  await firestore(env, pendingPath(uid, id), { method: "PATCH", body: JSON.stringify({ fields }) });
+}
+
+export const removePending = (env, uid, id) => firestore(env, pendingPath(uid, id), { method: "DELETE" });
+
+async function queryPending(env, where) {
+  const response = await firestore(env, ":runQuery", {
     method: "POST",
-    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "pending" }], where: filter, limit: 200 } }),
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "pending" }], where, limit: 200 } }),
   });
-  return (await res.json())
-    .filter((r) => r.document)
-    .map((r) => ({
-      name: r.document.name,
-      uid: r.document.fields.uid.stringValue,
-    }));
+  return (await response.json())
+    .filter((row) => row.document)
+    .map((row) => ({ name: row.document.name, uid: row.document.fields.uid.stringValue }));
 }
 
-async function removeDoc(env, name) {
-  await fetch(`https://firestore.googleapis.com/v1/${name}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${await serviceToken(env)}` },
-  });
+async function deleteDocument(env, name) {
+  await fetch(`https://firestore.googleapis.com/v1/${name}`, { method: "DELETE", headers: { Authorization: `Bearer ${await serviceToken(env)}` } });
 }
 
-// ユーザーごとに「統計へ反映済みの絆の寄与」を持つ(差分加算用。記録そのものは持たない)
-export async function getBondStats(env, uid) {
-  const res = await fs(env, `/statsBonds/${uid}`);
-  if (res.status === 404) return {};
-  try {
-    return JSON.parse((await res.json()).fields?.json?.stringValue ?? "{}") ?? {};
-  } catch {
-    return {};
-  }
-}
-
-export async function setBondStats(env, uid, counts) {
-  await fs(env, `/statsBonds/${uid}`, { method: "PATCH", body: JSON.stringify({ fields: { json: { stringValue: JSON.stringify(counts) } } }) });
-}
-
+// アカウント削除: 統計の自分の分・端末・Drive 連携・予約を消す
 export async function deleteUserData(env, uid) {
-  // 統計から、このユーザーの分を差し引く
-  const prev = await getBondStats(env, uid);
-  await addCounts(env, Object.fromEntries(Object.entries(prev).map(([k, n]) => [k, -n])));
-  await fs(env, `/statsBonds/${uid}`, { method: "DELETE" });
-  await fs(env, `/devices/${uid}`, { method: "DELETE" });
+  const contribution = await getBondStats(env, uid);
+  await addCounts(env, Object.fromEntries(Object.entries(contribution).map(([statKey, count]) => [statKey, -count])));
+  await firestore(env, `/statsBonds/${uid}`, { method: "DELETE" });
+  await firestore(env, `/devices/${uid}`, { method: "DELETE" });
   await deleteDriveAuth(env, uid);
-  const mine = await queryPending(env, {
-    fieldFilter: { field: { fieldPath: "uid" }, op: "EQUAL", value: { stringValue: uid } },
-  });
-  for (const d of mine) await removeDoc(env, d.name);
+  const pending = await queryPending(env, { fieldFilter: { field: { fieldPath: "uid" }, op: "EQUAL", value: { stringValue: uid } } });
+  for (const item of pending) await deleteDocument(env, item.name);
 }
 
-// ---- 通知送信 (cron から呼ぶ) ----
+// ---- 通知の送信 ----
 
 const MESSAGES = [
   { title: "先生！お仕事お疲れ様です！", body: "生徒さんたちが待ってますよ！" },
   { title: "先生、お仕事お疲れ様です。", body: "生徒のみなさんがお待ちです。" },
 ];
-
+const TEST_MESSAGE = { title: "テスト通知", body: "管理画面から送信されました。" };
 const randomMessage = () => MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
 
-async function sendFcm(env, token, m = randomMessage()) {
-  const res = await fetch(`https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`, {
+// 結果: ok / gone (無効になった端末) / error。失敗時は理由 (UNREGISTERED など) も返す
+async function sendFcm(env, token, message = randomMessage()) {
+  const response = await fetch(`https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${await serviceToken(env)}` },
-    body: JSON.stringify({
-      message: { token, webpush: { notification: { ...m, icon: "/img/icon.svg" }, fcm_options: { link: "/" } } },
-    }),
+    body: JSON.stringify({ message: { token, webpush: { notification: { ...message, icon: "/img/icon.svg" }, fcm_options: { link: "/" } } } }),
   });
-  if (res.ok) return { result: "ok" };
-  // 失敗の理由 (UNREGISTERED / SENDER_ID_MISMATCH / PERMISSION_DENIED など)。トークンや本文は含まれない
-  const code = (await res.json().catch(() => null))?.error?.status ?? "";
-  return { result: res.status === 404 || res.status === 400 ? "gone" : "error", status: res.status, code };
+  if (response.ok) return { result: "ok" };
+  const code = (await response.json().catch(() => null))?.error?.status ?? "";
+  return { result: response.status === 404 || response.status === 400 ? "gone" : "error", status: response.status, code };
 }
 
-// 管理画面のテスト通知。本人の端末にだけ送る
-export async function sendTestNotification(env, uid) {
+// ユーザーの全端末へ送り、無効になった端末は登録から外す
+async function sendToUser(env, uid, message, onResult) {
   const tokens = await getDevices(env, uid);
-  const result = { devices: tokens.length, ok: 0, gone: 0, error: 0, failures: [] };
   const alive = [];
-  for (const t of tokens) {
-    const r = await sendFcm(env, t, { title: "テスト通知", body: "管理画面から送信されました。" });
-    result[r.result]++;
-    if (r.result !== "ok") result.failures.push(`${r.status} ${r.code}`.trim());
-    if (r.result !== "gone") alive.push(t);
+  for (const token of tokens) {
+    const sent = await sendFcm(env, token, message);
+    onResult(sent);
+    if (sent.result !== "gone") alive.push(token);
   }
   if (alive.length !== tokens.length) await setDevices(env, uid, alive);
-  return result;
+  return tokens.length;
 }
 
+export async function sendTestNotification(env, uid) {
+  const summary = { devices: 0, ok: 0, gone: 0, error: 0, failures: [] };
+  summary.devices = await sendToUser(env, uid, TEST_MESSAGE, (sent) => {
+    summary[sent.result]++;
+    if (sent.result !== "ok") summary.failures.push(`${sent.status} ${sent.code}`.trim());
+  });
+  return summary;
+}
+
+// cron から毎分呼ぶ。1 件の失敗で残りが止まらないようにする
 export async function sendDueNotifications(env) {
   const due = await queryPending(env, {
-    fieldFilter: {
-      field: { fieldPath: "sendAt" },
-      op: "LESS_THAN_OR_EQUAL",
-      value: { timestampValue: new Date().toISOString() },
-    },
+    fieldFilter: { field: { fieldPath: "sendAt" }, op: "LESS_THAN_OR_EQUAL", value: { timestampValue: new Date().toISOString() } },
   });
-  for (const d of due) {
-    // 1件の失敗で残りの通知が止まらないようにする
+  for (const item of due) {
     try {
-      const tokens = await getDevices(env, d.uid);
-      const alive = [];
-      for (const t of tokens) {
-        const r = await sendFcm(env, t);
-        if (r.result !== "ok") console.error("fcm send failed", r.status, r.code);
-        if (r.result !== "gone") alive.push(t);
-      }
-      if (alive.length !== tokens.length) await setDevices(env, d.uid, alive);
-      await removeDoc(env, d.name);
-    } catch (e) {
-      console.error("send due notification failed", e?.message);
+      await sendToUser(env, item.uid, undefined, (sent) => sent.result !== "ok" && console.error("fcm send failed", sent.status, sent.code));
+      await deleteDocument(env, item.name);
+    } catch (error) {
+      console.error("send due notification failed", error?.message?.startsWith("firestore") ? error.message : error?.name);
     }
   }
 }

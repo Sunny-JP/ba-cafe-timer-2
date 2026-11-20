@@ -1,79 +1,68 @@
-// JST 計算・表示・UUID v7。ブラウザと Worker で共用するため DOM に依存しない。
-
+// ゲーム内の日付 (JST 4:00 区切り) の計算・表示・UUID v7。ブラウザと Worker で共用する
 const HOUR = 3600 * 1000;
-export const JST_OFFSET = 9 * HOUR;
+const DAY = 24 * HOUR;
+const JST_OFFSET = 9 * HOUR;
+const DAY_START = 4 * HOUR;
 export const TAP_INTERVAL = 3 * HOUR;
 export const TICKET_COOLDOWN = 20 * HOUR;
-export const DUPLICATE_WINDOW = 60 * 1000;
-const DAY = 24 * HOUR;
 
-const pad = (n, w = 2) => String(n).padStart(w, '0');
+const padTwo = (number) => String(number).padStart(2, '0');
+const splitMonth = (month) => month.split('-').map(Number);
 
-// ゲーム日・論理月は「JST 4:00 区切り」。JST に直してから 4 時間戻した UTC フィールドを読む。
-const logicalDate = (ms) => new Date(ms + JST_OFFSET - 4 * HOUR);
-
-export function logicalDay(ms) {
-  const d = logicalDate(ms);
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+// JST に直して 4 時間戻した時刻の UTC 日付が、ゲーム内の日付になる
+export function logicalDay(time) {
+  const shifted = new Date(time + JST_OFFSET - DAY_START);
+  return `${shifted.getUTCFullYear()}-${padTwo(shifted.getUTCMonth() + 1)}-${padTwo(shifted.getUTCDate())}`;
 }
 
-export function logicalMonth(ms) {
-  return logicalDay(ms).slice(0, 7);
-}
+export const logicalMonth = (time) => logicalDay(time).slice(0, 7);
 
 export function prevMonth(month) {
-  const [y, m] = month.split('-').map(Number);
-  return m === 1 ? `${y - 1}-12` : `${y}-${pad(m - 1)}`;
+  const [year, monthNumber] = splitMonth(month);
+  return monthNumber === 1 ? `${year - 1}-12` : `${year}-${padTwo(monthNumber - 1)}`;
 }
 
 export function nextMonth(month) {
-  const [y, m] = month.split('-').map(Number);
-  return m === 12 ? `${y + 1}-01` : `${y}-${pad(m + 1)}`;
+  const [year, monthNumber] = splitMonth(month);
+  return monthNumber === 12 ? `${year + 1}-01` : `${year}-${padTwo(monthNumber + 1)}`;
 }
 
 export function daysInMonth(month) {
-  const [y, m] = month.split('-').map(Number);
-  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const [year, monthNumber] = splitMonth(month);
+  return new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
 }
 
-// 論理月の開始(毎月1日 4:00 JST)と終了(翌月1日 4:00 JST)
+// 論理月の開始 (1 日 4:00 JST) と終了 (翌月 1 日 4:00 JST)
 export function monthRange(month) {
-  const [y, m] = month.split('-').map(Number);
-  return [Date.UTC(y, m - 1, 1, 4) - JST_OFFSET, Date.UTC(y, m, 1, 4) - JST_OFFSET];
+  const [year, monthNumber] = splitMonth(month);
+  return [Date.UTC(year, monthNumber - 1, 1, 4) - JST_OFFSET, Date.UTC(year, monthNumber, 1, 4) - JST_OFFSET];
 }
 
-export const isMonth = (s) => /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
+export const isMonth = (value) => /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 
-// 次の 4:00 / 16:00 JST(ちょうどの時刻は「次」とみなす)
-export function nextBoundary(ms) {
-  const half = 12 * HOUR;
-  const s = ms + JST_OFFSET - 4 * HOUR;
-  return (Math.floor(s / half) + 1) * half + 4 * HOUR - JST_OFFSET;
+// 次の 4:00 / 16:00 JST (ちょうどの時刻は「次」とみなす)
+export function nextBoundary(time) {
+  const halfDay = 12 * HOUR;
+  const shifted = time + JST_OFFSET - DAY_START;
+  return (Math.floor(shifted / halfDay) + 1) * halfDay + DAY_START - JST_OFFSET;
 }
 
-// タップから3時間後に通知を予約するか。4:00/16:00 を跨ぐ場合は予約しない。
-export function shouldScheduleNotification(tapMs) {
-  const sendAt = Math.floor((tapMs + TAP_INTERVAL) / 1000) * 1000;
-  return nextBoundary(tapMs) > sendAt ? sendAt : null;
+// 次にタップできる時刻: 3 時間後と次の 4:00 / 16:00 の早い方
+export const nextTapTime = (lastTapTime) => Math.min(lastTapTime + TAP_INTERVAL, nextBoundary(lastTapTime));
+
+// 3 時間後に通知するなら送信時刻、4:00 / 16:00 を跨ぐなら null
+export function shouldScheduleNotification(tapTime) {
+  const sendAt = Math.floor((tapTime + TAP_INTERVAL) / 1000) * 1000;
+  return nextBoundary(tapTime) > sendAt ? sendAt : null;
 }
 
-// 表示用。tz を渡さなければ端末のタイムゾーン。
-export function fmt(ms, opts, tz) {
-  return new Intl.DateTimeFormat('ja-JP', { timeZone: tz || undefined, ...opts }).format(ms);
-}
-export const fmtTime = (ms, tz) => fmt(ms, { hour: '2-digit', minute: '2-digit', hour12: false }, tz);
-export const fmtDateTime = (ms, tz) =>
-  fmt(ms, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }, tz);
-export const fmtJst = (ms) => fmtTime(ms, 'Asia/Tokyo');
+// 表示用。timeZone を渡さなければ端末のタイムゾーン
+export const fmt = (time, options, timeZone) => new Intl.DateTimeFormat('ja-JP', { timeZone: timeZone || undefined, ...options }).format(time);
+export const fmtTime = (time, timeZone) => fmt(time, { hour: '2-digit', minute: '2-digit', hour12: false }, timeZone);
 
-export function fmtDuration(ms) {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
-}
-
-export function isValidTimeZone(tz) {
+export function isValidTimeZone(timeZone) {
   try {
-    new Intl.DateTimeFormat('en', { timeZone: tz });
+    new Intl.DateTimeFormat('en', { timeZone });
     return true;
   } catch {
     return false;
@@ -81,35 +70,32 @@ export function isValidTimeZone(tz) {
 }
 
 export function uuidv7(now = Date.now()) {
-  const b = new Uint8Array(16);
-  crypto.getRandomValues(b);
-  let t = now;
-  for (let i = 5; i >= 0; i--) {
-    b[i] = t % 256;
-    t = Math.floor(t / 256);
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let remaining = now;
+  for (let index = 5; index >= 0; index--) {
+    bytes[index] = remaining % 256;
+    remaining = Math.floor(remaining / 256);
   }
-  b[6] = (b[6] & 0x0f) | 0x70;
-  b[8] = (b[8] & 0x3f) | 0x80;
-  const h = [...b].map((x) => pad(x.toString(16))).join('');
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  bytes[6] = (bytes[6] & 0x0f) | 0x70;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => padTwo(byte.toString(16))).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-// 次にタップできる時刻。3時間後、または次の 4:00/16:00 のどちらか早い方(境界でリセットされる)。
-export const nextTapTime = (lastMs) => Math.min(lastMs + TAP_INTERVAL, nextBoundary(lastMs));
-
-// 現在のゲーム日(4:00 JST 始まり)を3時間ごとの8枠に分け、各枠の最初のタップを割り当てる。
+// 当日を 3 時間ごとの 8 枠に分け、各枠の最初のタップを割り当てる。
+// 最新のタップより後の空き枠は「最新タップ + 3 時間ごと」の時刻で表示する (次の 4:00 / 16:00 以降は元の時刻)
 export function daySlots(now, taps) {
-  const dayStart = Math.floor((now + JST_OFFSET - 4 * HOUR) / DAY) * DAY + 4 * HOUR - JST_OFFSET;
-  const times = taps.map((t) => Date.parse(t.tap_time)).sort((a, b) => a - b);
-  // 最新のタップより後の空き枠は「最新タップ + 3時間ごと」の時刻で表示する(次の 4:00/16:00 以降は元の時刻に戻る)
-  const inDay = times.filter((ms) => ms >= dayStart && ms < dayStart + DAY);
-  const last = inDay.length ? inDay[inDay.length - 1] : null;
-  const lastIdx = last === null ? -1 : Math.floor((last - dayStart) / TAP_INTERVAL);
-  const boundary = last === null ? 0 : nextBoundary(last);
-  return Array.from({ length: 8 }, (_, k) => {
-    const start = dayStart + k * TAP_INTERVAL;
-    const shifted = last === null || k <= lastIdx ? null : last + (k - lastIdx) * TAP_INTERVAL;
+  const dayStart = Math.floor((now + JST_OFFSET - DAY_START) / DAY) * DAY + DAY_START - JST_OFFSET;
+  const tapTimes = taps.map((tap) => Date.parse(tap.tap_time)).sort((first, second) => first - second);
+  const todayTimes = tapTimes.filter((time) => time >= dayStart && time < dayStart + DAY);
+  const lastTime = todayTimes.length ? todayTimes[todayTimes.length - 1] : null;
+  const lastSlot = lastTime === null ? -1 : Math.floor((lastTime - dayStart) / TAP_INTERVAL);
+  const boundary = lastTime === null ? 0 : nextBoundary(lastTime);
+  return Array.from({ length: 8 }, (_, slotIndex) => {
+    const start = dayStart + slotIndex * TAP_INTERVAL;
+    const shifted = lastTime === null || slotIndex <= lastSlot ? null : lastTime + (slotIndex - lastSlot) * TAP_INTERVAL;
     const time = shifted !== null && shifted < boundary ? shifted : start;
-    return { start, time, tap: times.find((ms) => ms >= start && ms < start + TAP_INTERVAL) ?? null };
+    return { start, time, tap: tapTimes.find((tapTime) => tapTime >= start && tapTime < start + TAP_INTERVAL) ?? null };
   });
 }

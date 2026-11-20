@@ -2,8 +2,17 @@
 .wrangler/
 node_modules/
 
-service-account.json
+*service-account.json
 
 # 運用者向けの内部資料 (管理機能・秘匿情報の扱いを含む)
 ADMIN_README.md
 public/dist/
+public/firebase-messaging-sw.js
+
+# ファイル別の仕様書 (手元の保守用。PDF は scripts/spec-pdf.mjs で作る)
+doc/manual.md
+doc/manual.pdf
+scripts/spec-pdf.mjs
+
+cafetimer2-announce.pptx
+public/img/guide/

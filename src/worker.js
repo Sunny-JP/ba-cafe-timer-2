@@ -1,18 +1,18 @@
-// ルーティングと cron。静的ファイルは Static Assets が配信し、/api/* だけここに来る。
-
+// API (/api/*) のルーティング・認証・回数制限と、通知送信の cron
 import { DurableObject } from 'cloudflare:workers';
-import { Drive, DriveError } from './drive.js';
-import { forgetAccessToken, getAccessToken, linkDrive, unlinkDrive } from './driveauth.js';
+import { Drive, DriveError, forgetAccessToken, getAccessToken, linkDrive, unlinkDrive } from './drive.js';
 import {
   addCounts,
   addPending,
   countDevices,
   countUsers,
   deleteUserData,
+  getBondStats,
   getCatalog,
   getCounts,
-  getBondStats,
   getDevices,
+  isAccountActive,
+  removePending,
   sendDueNotifications,
   sendTestNotification,
   setBondStats,
@@ -20,8 +20,7 @@ import {
   setDevices,
   verifyIdToken,
 } from './firebase.js';
-import { GIFT_EXP } from '../public/data/gifts.js';
-import { BOND_EXP, CATEGORY, CHARACTERS, GIFTS, GIFT_NAME, STUDENT_NAME } from './data/gamedata.js';
+import { BOND_EXP, CATEGORY, CHARACTERS, GIFTS, GIFT_EXP, GIFT_NAME, STUDENT_NAME } from './gamedata.js';
 import {
   TICKET_COOLDOWN,
   isMonth,
@@ -32,7 +31,7 @@ import {
   prevMonth,
   shouldScheduleNotification,
   uuidv7,
-} from '../public/js/features/time.js';
+} from '../public/js/time.js';
 
 class HttpError extends Error {
   constructor(status, message, code) {
@@ -42,144 +41,143 @@ class HttpError extends Error {
   }
 }
 
+// 外部のエラー文はトークンを含み得るので、ログには自前のメッセージだけを出す
+const safeMessage = (error) =>
+  /^(firestore \d+|identitytoolkit \d+|service account auth failed|jwk fetch failed|Drive API \d+)$/.test(error?.message) ? error.message : '';
+
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 
 const DEFAULT_PROFILE = { ticket1_time: null, ticket2_time: null, timezone: null, updated_at: null };
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const isIso = (s) => typeof s === 'string' && !Number.isNaN(Date.parse(s));
-const isUuid = (s) => typeof s === 'string' && /^[0-9a-f-]{36}$/i.test(s);
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const IMPORT_FROM_DATE = '2025-01-01';
+const IMPORT_FROM_TIME = Date.parse(`${IMPORT_FROM_DATE}T00:00:00+09:00`);
+const MINUTE = 60 * 1000;
+const DAY = 24 * 60 * MINUTE;
 
-// ---- Drive 上のデータ ----
+const isIsoTime = (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
+const isUuid = (value) => typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value);
+const isFcmToken = (value) => typeof value === 'string' && /^[\w:-]{1,4096}$/.test(value);
+const byTapTime = (first, second) => (first.tap_time < second.tap_time ? -1 : first.tap_time > second.tap_time ? 1 : 0);
+const byRecordedDesc = (first, second) => (first.recorded_at < second.recorded_at ? 1 : first.recorded_at > second.recorded_at ? -1 : 0);
+const padTwo = (number) => String(number).padStart(2, '0');
 
-const tapsFile = (month) => `taps-${month}.json`;
-const readTaps = async (drive, month) => (await drive.read(tapsFile(month), { taps: [] })).taps;
+// ---- Drive 上のファイル ----
+
+const tapsFileName = (month) => `taps-${month}.json`;
+const readTaps = async (drive, month) => (await drive.read(tapsFileName(month), { taps: [] })).taps;
 const readProfile = async (drive) => ({ ...DEFAULT_PROFILE, ...(await drive.read('profile.json', {})) });
 const readBonds = async (drive) => (await drive.read('relationship.json', { items: [] })).items;
-const byRecordedDesc = (a, b) => (a.recorded_at < b.recorded_at ? 1 : a.recorded_at > b.recorded_at ? -1 : 0);
 
-// 当月の最後のタップ。当月が空なら前月を見る。
-async function lastTap(drive, month, taps) {
-  const list = taps.length ? taps : await readTaps(drive, prevMonth(month));
-  return list.reduce((a, t) => (!a || t.tap_time > a.tap_time ? t : a), null);
+async function findLastTap(drive, month, taps) {
+  const candidates = taps.length ? taps : await readTaps(drive, prevMonth(month));
+  return candidates.reduce((latest, tap) => (!latest || tap.tap_time > latest.tap_time ? tap : latest), null);
 }
 
-function validBond(b) {
-  if (typeof b.char_key !== 'string' || !b.char_key || b.char_key.length > 64) return 'char_key が不正です。';
-  if (!Number.isInteger(b.bond_level) || b.bond_level < 1 || b.bond_level > 100) return 'bond_level は 1〜100 です。';
-  if (!DATE_RE.test(b.recorded_at ?? '')) return 'recorded_at は YYYY-MM-DD 形式です。';
+function bondError(bond) {
+  if (typeof bond.char_key !== 'string' || !bond.char_key || bond.char_key.length > 64) return 'char_key が不正です。';
+  if (!Number.isInteger(bond.bond_level) || bond.bond_level < 1 || bond.bond_level > 100) return 'bond_level は 1〜100 です。';
+  if (!DATE_PATTERN.test(bond.recorded_at ?? '')) return 'recorded_at は YYYY-MM-DD 形式です。';
   return null;
 }
 
-const bondExists = (items, b) => items.some((x) => x.char_key === b.char_key && x.bond_level === b.bond_level);
+const bondExists = (items, bond) => items.some((item) => item.char_key === bond.char_key && item.bond_level === bond.bond_level);
 
-// ---- 統計 (個人を特定しない件数だけを Firestore の stats/counters に加算する) ----
+// ---- 統計 (個人を特定しない件数だけを stats/counters に加算する) ----
 
-// 「絆 N 以上」に到達したユーザー数を数える閾値
-const BOND_THRESHOLDS = [100, 95, 90, 80, 70, 60, 50]; // 各枠の下限(100 / 99〜95 / 94〜90 / 89〜80 …)。降順
-const pad2 = (n) => String(n).padStart(2, '0');
+// 絆の到達人数を数える枠の下限 (100 / 99〜95 / 94〜90 / 89〜80 …)。降順
+const BOND_THRESHOLDS = [100, 95, 90, 80, 70, 60, 50];
 
-function tapKeys(ms) {
-  const d = new Date(ms);
-  const day = `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}`;
-  const jst = new Date(ms + 9 * 3600e3); // 時間帯・曜日は JST で集計する
-  return [`tap_d_${day}`, `tap_m_${logicalMonth(ms).replace('-', '')}`, `tap_h_${pad2(jst.getUTCHours())}`, `tap_w_${jst.getUTCDay()}`];
+// タップの集計キー: 日 (UTC)・論理月・時間帯と曜日 (JST)
+function tapStatKeys(tapTime) {
+  const utc = new Date(tapTime);
+  const jst = new Date(tapTime + 9 * 60 * MINUTE);
+  const day = `${utc.getUTCFullYear()}${padTwo(utc.getUTCMonth() + 1)}${padTwo(utc.getUTCDate())}`;
+  return [`tap_d_${day}`, `tap_m_${logicalMonth(tapTime).replace('-', '')}`, `tap_h_${padTwo(jst.getUTCHours())}`, `tap_w_${jst.getUTCDay()}`];
 }
 
-// このユーザーの記録から、統計カウンタへの寄与(キャラを登録したか、閾値に届いたか)を求める。
-function bondCounts(items) {
+// このユーザーの寄与: キャラごとに「登録したか」と「最高ランクが入る枠」を 1 と数える
+function bondStatCounts(items) {
   const counts = {};
-  const best = new Map(); // char_key -> 最高ランク
-  for (const b of items) best.set(b.char_key, Math.max(best.get(b.char_key) ?? 0, b.bond_level));
-  for (const [key, level] of best) {
-    counts[`bond_n_${key}`] = 1; // 記録数ではなく「登録したことがあるユーザー数」
-    // 最高ランクが入る枠だけ数える(97 なら 99〜95 の枠のみ)。BOND_THRESHOLDS は降順
-    const t = BOND_THRESHOLDS.find((x) => level >= x);
-    if (t) counts[`bond_ge${t}_${key}`] = 1;
+  const bestLevel = new Map();
+  for (const item of items) bestLevel.set(item.char_key, Math.max(bestLevel.get(item.char_key) ?? 0, item.bond_level));
+  for (const [charKey, level] of bestLevel) {
+    counts[`bond_n_${charKey}`] = 1;
+    const threshold = BOND_THRESHOLDS.find((value) => level >= value);
+    if (threshold) counts[`bond_ge${threshold}_${charKey}`] = 1;
   }
   return counts;
 }
 
-const knownCharKeys = async (env) =>
-  new Set([...CHARACTERS.map((c) => c.key), ...(await getCatalog(env)).characters.map((c) => c.key)]);
-
-// 統計の失敗でユーザーの操作は失敗させない
-async function bumpStats(env, deltas) {
+async function addTapStats(env, tapTime) {
   if (!env.FIREBASE_SERVICE_ACCOUNT) return;
-  try {
-    await addCounts(env, deltas);
-  } catch {
-    /* 統計のみ失敗 */
-  }
+  await addCounts(env, Object.fromEntries(tapStatKeys(tapTime).map((statKey) => [statKey, 1]))).catch(() => {});
 }
 
-// 絆の統計を、現在の記録に合わせる。前回反映した分(ユーザーごとに保持)との差分だけを加算するので、
-// 何度呼んでも二重に数えず、過去にインポートした分も取り込める。
-// 未知の char_key は数えない(任意の文字列でカウンタが増えるのを防ぐ)
+// 前回反映した分 (statsBonds/{uid}) との差分だけを加算するので、何度呼んでも二重に数えない。未知のキャラは数えない
 async function syncBondStats(env, uid, items) {
   if (!env.FIREBASE_SERVICE_ACCOUNT) return;
   try {
-    const known = await knownCharKeys(env);
+    const knownKeys = new Set([...CHARACTERS, ...(await getCatalog(env)).characters].map((character) => character.key));
     const next = Object.fromEntries(
-      Object.entries(bondCounts(items)).filter(([k, n]) => n && known.has(k.replace(/^bond_(?:n|ge\d+)_/, ''))),
+      Object.entries(bondStatCounts(items)).filter(([statKey]) => knownKeys.has(statKey.replace(/^bond_(?:n|ge\d+)_/, ''))),
     );
-    const prev = await getBondStats(env, uid);
+    const previous = await getBondStats(env, uid);
     const deltas = {};
-    for (const k of new Set([...Object.keys(prev), ...Object.keys(next)])) deltas[k] = (next[k] ?? 0) - (prev[k] ?? 0);
+    for (const statKey of new Set([...Object.keys(previous), ...Object.keys(next)])) deltas[statKey] = (next[statKey] ?? 0) - (previous[statKey] ?? 0);
     if (!Object.values(deltas).some(Boolean)) return;
     await addCounts(env, deltas);
     await setBondStats(env, uid, next);
-  } catch (e) {
-    console.error('sync bond stats failed', e?.message);
+  } catch (error) {
+    console.error('sync bond stats failed', safeMessage(error));
   }
 }
 
 // ---- 管理画面 ----
 
-const isAdmin = (env, uid) => (env.ADMIN_UIDS ?? '').split(',').some((x) => x.trim() === uid);
-const isAdminRoute = (key) => /^\w+ \/api\/admin\//.test(key);
+const isAdmin = (env, uid) => (env.ADMIN_UIDS ?? '').split(',').some((adminUid) => adminUid.trim() === uid);
+const isAdminRoute = (routeKey) => /^\w+ \/api\/admin\//.test(routeKey);
+const NO_DEVICE_MESSAGE = 'この管理者アカウントで通知がオンになっていません。アプリ側で通知をオンにしてください。';
 
 // 管理画面から送られたキャラクターを検証して整形する
-function validCatalog(body) {
-  const fail = (m) => {
-    throw new HttpError(400, m);
+function validateCatalog(characters) {
+  const fail = (message) => {
+    throw new HttpError(400, message);
   };
-  const characters = body?.characters ?? [];
   if (!Array.isArray(characters) || characters.length > 200) fail('データが不正です。');
-
-  const staticKeys = new Set(CHARACTERS.filter((c) => !c.extra).map((c) => c.key));
-  const keys = new Set();
-  const out = characters.map((c) => {
-    if (!/^[a-z0-9_]{1,64}$/.test(c?.key ?? '') || staticKeys.has(c.key) || keys.has(c.key)) fail('キャラクターの key が不正、または重複しています。');
-    if (typeof c.name !== 'string' || !c.name.trim() || c.name.length > 64) fail('キャラクター名が不正です。');
-    // 日本語名(name)と英語名は必須、中国語・韓国語は任意
+  const builtInKeys = new Set(CHARACTERS.filter((character) => !character.extra).map((character) => character.key));
+  const usedKeys = new Set();
+  return characters.map((character) => {
+    const { key, name } = character ?? {};
+    if (!/^[a-z0-9_]{1,64}$/.test(key ?? '') || builtInKeys.has(key) || usedKeys.has(key)) fail('キャラクターの key が不正、または重複しています。');
+    if (typeof name !== 'string' || !name.trim() || name.length > 64) fail('キャラクター名が不正です。');
     const names = {};
     for (const [lang, required] of [['en', true], ['zh', false], ['ko', false]]) {
-      const v = c.names?.[lang]?.trim?.() ?? '';
-      if (v.length > 64 || (required && !v)) fail(`名前(${lang})が不正です。`);
-      if (v) names[lang] = v;
+      const translated = character.names?.[lang]?.trim?.() ?? '';
+      if (translated.length > 64 || (required && !translated)) fail(`名前(${lang})が不正です。`);
+      if (translated) names[lang] = translated;
     }
-    if (!Array.isArray(c.gifts) || !c.gifts.length || c.gifts.length > GIFTS.length) fail('好きな贈り物を1つ以上選んでください。');
-    const seen = new Set();
-    const gifts = c.gifts.map(([i, rate]) => {
-      if (!Number.isInteger(i) || i < 0 || i >= GIFTS.length || seen.has(i) || !(rate in GIFT_EXP)) fail(`${c.name} の贈り物指定が不正です。`);
-      seen.add(i);
-      return [i, rate];
+    if (!Array.isArray(character.gifts) || !character.gifts.length || character.gifts.length > GIFTS.length) fail('好きな贈り物を1つ以上選んでください。');
+    const seenGifts = new Set();
+    const gifts = character.gifts.map(([giftIndex, rate]) => {
+      const valid = Number.isInteger(giftIndex) && giftIndex >= 0 && giftIndex < GIFTS.length && !seenGifts.has(giftIndex) && rate in GIFT_EXP;
+      if (!valid) fail(`${name} の贈り物指定が不正です。`);
+      seenGifts.add(giftIndex);
+      return [giftIndex, rate];
     });
-    keys.add(c.key);
-    return { key: c.key, name: c.name.trim(), names, gifts };
+    usedKeys.add(key);
+    return { key, name: name.trim(), names, gifts };
   });
-  return { characters: out };
 }
 
-// ---- ハンドラ ----
+// ---- ルート ----
 
 const routes = {
-  // タイマー画面に必要な分だけ。絆の記録は GET /api/relationship で、画面を出したあとに読む
-  'GET /api/bootstrap': async ({ drive, url }) => {
+  // タイマー画面に必要な分。is_admin は端末のログの詳しさに使う
+  'GET /api/bootstrap': async ({ drive, env, uid, url }) => {
     const month = url.searchParams.get('month') ?? logicalMonth(Date.now());
     if (!isMonth(month)) throw new HttpError(400, 'month が不正です。');
     const [profile, taps] = await Promise.all([readProfile(drive), readTaps(drive, month)]);
-    return { profile, month, taps, last_tap: await lastTap(drive, month, taps) };
+    return { profile, month, taps, last_tap: await findLastTap(drive, month, taps), is_admin: isAdmin(env, uid) };
   },
 
   'GET /api/taps': async ({ drive, url }) => {
@@ -188,70 +186,61 @@ const routes = {
     return { month, taps: await readTaps(drive, month) };
   },
 
-  // 端末は押した時点で ID と時刻を決めて保存し、届くまで同じ内容で送り直す(js/features/outbox.js)。
-  // 同じ ID は二重に記録しない。ID・時刻が無い(古い端末の)リクエストはサーバーの時刻で記録する。
+  // 端末が決めた ID で届くまで送り直されるので、同じ ID は二重に記録しない。
+  // 通知の予約は Drive より速い Firestore へ先に始め、別の端末のクールダウン中 (409) なら取り消す
   'POST /api/taps': async ({ drive, env, uid, body, ctx }) => {
     const now = Date.now();
-    const given = body?.tap_time !== undefined || body?.id !== undefined;
-    const at = given ? Date.parse(body.tap_time) : now;
-    // id は通知予約の Firestore ドキュメント名にも使うので、英数字とハイフンだけにする
-    if (given && (typeof body.id !== 'string' || !/^[0-9A-Za-z-]{1,64}$/.test(body.id) || typeof body.tap_time !== 'string' || !Number.isFinite(at))) {
-      throw new HttpError(400, 'tap が不正です。');
-    }
-    if (at > now + 60000 || at < now - 7 * 864e5) throw new HttpError(400, 'tap_time が不正です。'); // 7日以内・未来でないものだけ
-    const id = given ? body.id : uuidv7(at);
+    const hasClientValues = body?.tap_time !== undefined || body?.id !== undefined;
+    const tapTime = hasClientValues ? Date.parse(body.tap_time) : now;
+    const validClientValues = typeof body?.id === 'string' && /^[0-9A-Za-z-]{1,64}$/.test(body.id) && typeof body.tap_time === 'string' && Number.isFinite(tapTime);
+    if (hasClientValues && !validClientValues) throw new HttpError(400, 'tap が不正です。');
+    if (tapTime > now + MINUTE || tapTime < now - 7 * DAY) throw new HttpError(400, 'tap_time が不正です。');
+    const id = hasClientValues ? body.id : uuidv7(tapTime);
 
-    // 通知の予約は、Drive より速い Firestore へ真っ先に始める(押してすぐアプリを閉じられても通知は確保しやすい)。
-    // 予約の ID はタップの ID なので、再送しても1件のまま。送り直しで遅れて届いたタップは、まだ先の通知だけ予約する。
-    // 通知の失敗でタップの記録は失敗させない
-    const sendAt = shouldScheduleNotification(at);
+    const sendAt = shouldScheduleNotification(tapTime);
     const scheduling =
       sendAt && sendAt > now && env.FIREBASE_SERVICE_ACCOUNT
         ? addPending(env, uid, sendAt, id).then(
             () => true,
-            (e) => {
-              console.error('schedule notification failed', e?.message); // 原因調査のためログは残す
+            (error) => {
+              console.error('schedule notification failed', safeMessage(error));
               return false;
             },
           )
         : Promise.resolve(false);
 
-    const month = logicalMonth(at);
+    const month = logicalMonth(tapTime);
     const taps = await readTaps(drive, month);
-    const dup = taps.find((t) => t.id === id);
-    if (dup) return { tap: dup, scheduled: await scheduling }; // 再送されても二重に記録しない
-    // 別の端末で記録済みのタップのクールダウン中なら、二重の記録として拒否する(先にサーバーへ届いた方を残す)。
-    // クールダウンは 4:00 / 16:00 を跨がないので、月を跨いで比べる必要はない
-    const overlaps = (t) => {
-      const s = Date.parse(t.tap_time);
-      return t.id !== id && (s <= at ? at < nextTapTime(s) : s < nextTapTime(at));
-    };
-    if (taps.some(overlaps)) throw new HttpError(409, '他の端末で記録済みです。', 'conflict');
+    const recorded = taps.find((tap) => tap.id === id);
+    if (recorded) return { tap: recorded, scheduled: await scheduling };
 
-    const tap = { id, tap_time: new Date(at).toISOString() };
-    await drive.write(tapsFile(month), { taps: [...taps, tap].sort((a, b) => (a.tap_time < b.tap_time ? -1 : a.tap_time > b.tap_time ? 1 : 0)) });
-    // 統計は応答を待たせず、返したあとに加算する
-    ctx.waitUntil(bumpStats(env, Object.fromEntries(tapKeys(at).map((k) => [k, 1]))));
+    const overlaps = (tap) => {
+      const otherTime = Date.parse(tap.tap_time);
+      return tap.id !== id && (otherTime <= tapTime ? tapTime < nextTapTime(otherTime) : otherTime < nextTapTime(tapTime));
+    };
+    if (taps.some(overlaps)) {
+      if (await scheduling) await removePending(env, uid, id).catch((error) => console.error('cancel notification failed', safeMessage(error)));
+      throw new HttpError(409, '他の端末で記録済みです。', 'conflict');
+    }
+
+    const tap = { id, tap_time: new Date(tapTime).toISOString() };
+    await drive.write(tapsFileName(month), { taps: [...taps, tap].sort(byTapTime) });
+    ctx.waitUntil(addTapStats(env, tapTime));
     const scheduled = await scheduling;
     return { tap, scheduled, send_at: scheduled ? new Date(sendAt).toISOString() : null };
   },
 
+  // チケットは、記録済みの使用から 20 時間以内の別の値 (別の端末・遅れて届いた送信) を反映せず conflicts で返す
   'PUT /api/profile': async ({ drive, body }) => {
     const profile = await readProfile(drive);
     const conflicts = [];
-    for (const k of ['ticket1_time', 'ticket2_time']) {
-      if (k in body) {
-        if (body[k] !== null && !isIso(body[k])) throw new HttpError(400, `${k} が不正です。`);
-        // 記録済みの使用から 20 時間以内の使用(別の端末での二重の記録)や、それより古い時刻(遅れて届いた送信)は
-        // 反映せず、先にサーバーへ届いた記録を残す。同じ値の再送はそのまま受け付ける
-        const cur = profile[k] && Date.parse(profile[k]);
-        const next = body[k] && Date.parse(body[k]);
-        if (cur && next && next !== cur && next < cur + TICKET_COOLDOWN) {
-          conflicts.push(k);
-          continue;
-        }
-        profile[k] = body[k];
-      }
+    for (const field of ['ticket1_time', 'ticket2_time']) {
+      if (!(field in body)) continue;
+      if (body[field] !== null && !isIsoTime(body[field])) throw new HttpError(400, `${field} が不正です。`);
+      const current = profile[field] && Date.parse(profile[field]);
+      const next = body[field] && Date.parse(body[field]);
+      if (current && next && next !== current && next < current + TICKET_COOLDOWN) conflicts.push(field);
+      else profile[field] = body[field];
     }
     if ('timezone' in body) {
       if (body.timezone !== null && !isValidTimeZone(body.timezone)) throw new HttpError(400, 'timezone が不正です。');
@@ -264,24 +253,17 @@ const routes = {
 
   'GET /api/relationship': async ({ drive, env, uid, ctx }) => {
     const items = await readBonds(drive);
-    ctx.waitUntil(syncBondStats(env, uid, [...items])); // 過去にインポートした分の取り込み。応答は待たない
+    ctx.waitUntil(syncBondStats(env, uid, [...items]));
     return { relationship: items.sort(byRecordedDesc) };
   },
 
   'POST /api/relationship': async ({ drive, env, uid, body }) => {
-    const err = validBond(body);
-    if (err) throw new HttpError(400, err);
+    const error = bondError(body);
+    if (error) throw new HttpError(400, error);
     const items = await readBonds(drive);
     if (bondExists(items, body)) throw new HttpError(409, `RANK ${body.bond_level} は既に登録されています。`);
     const now = new Date().toISOString();
-    const item = {
-      id: uuidv7(),
-      char_key: body.char_key,
-      bond_level: body.bond_level,
-      recorded_at: body.recorded_at,
-      created_at: now,
-      updated_at: now,
-    };
+    const item = { id: uuidv7(), char_key: body.char_key, bond_level: body.bond_level, recorded_at: body.recorded_at, created_at: now, updated_at: now };
     const next = [...items, item];
     await drive.write('relationship.json', { items: next });
     await syncBondStats(env, uid, next);
@@ -291,92 +273,100 @@ const routes = {
   'DELETE /api/relationship': async ({ drive, env, uid, body, url }) => {
     const id = body.id ?? url.searchParams.get('id');
     const items = await readBonds(drive);
-    const target = items.find((x) => x.id === id);
-    if (!target) throw new HttpError(404, '見つかりません。');
-    const next = items.filter((x) => x.id !== id);
+    if (!items.some((item) => item.id === id)) throw new HttpError(404, '見つかりません。');
+    const next = items.filter((item) => item.id !== id);
     await drive.write('relationship.json', { items: next });
     await syncBondStats(env, uid, next);
     return { ok: true };
   },
 
   'PUT /api/devices': async ({ env, uid, body }) => {
-    if (typeof body.token !== 'string' || !body.token) throw new HttpError(400, 'token が不正です。');
+    if (!isFcmToken(body.token)) throw new HttpError(400, 'token が不正です。');
     const tokens = await getDevices(env, uid);
     if (!tokens.includes(body.token)) await setDevices(env, uid, [...tokens, body.token].slice(-10));
     return { ok: true };
   },
 
   'DELETE /api/devices': async ({ env, uid, body }) => {
+    if (!isFcmToken(body.token)) throw new HttpError(400, 'token が不正です。');
     const tokens = await getDevices(env, uid);
-    await setDevices(env, uid, tokens.filter((t) => t !== body.token));
+    await setDevices(env, uid, tokens.filter((token) => token !== body.token));
     return { ok: true };
   },
 
   'GET /api/catalog': async ({ env }) => (env.FIREBASE_SERVICE_ACCOUNT ? getCatalog(env) : { characters: [] }),
 
-  // ゲームデータ本体。public/ に置かず、ログイン済みのユーザーにだけ配る
-  // version は内容のハッシュ。端末は保存済みの version を ?v= で送り、同じなら本体を省く(unchanged)
+  // version は内容のハッシュ。端末が送った ?v= と同じなら本体を省く
   'GET /api/gamedata': async ({ env, url }) => {
     const data = {
       bondExp: BOND_EXP,
+      giftExp: GIFT_EXP,
       gifts: GIFTS,
       characters: CHARACTERS,
       names: { category: CATEGORY, gift: GIFT_NAME, student: STUDENT_NAME },
       catalog: env.FIREBASE_SERVICE_ACCOUNT ? await getCatalog(env) : { characters: [] },
     };
     const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(JSON.stringify(data)));
-    const version = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const version = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
     return url.searchParams.get('v') === version ? { version, unchanged: true } : { version, ...data };
   },
 
-  // 管理者かどうかの確認用 (権限チェックは handle() 側で済んでいる)
   'GET /api/admin/me': async () => ({ ok: true }),
 
   'GET /api/admin/stats': async ({ env }) => {
     const [counts, catalog, pushUsers, users] = await Promise.all([getCounts(env), getCatalog(env), countDevices(env), countUsers(env)]);
-
-    const series = (prefix, take) =>
+    const count = (statKey) => Math.max(0, counts[statKey] ?? 0);
+    const latestSeries = (prefix, limit) =>
       Object.entries(counts)
-        .filter(([k]) => k.startsWith(prefix))
-        .map(([k, count]) => ({ key: k.slice(prefix.length), count }))
-        .sort((a, b) => (a.key < b.key ? 1 : -1))
-        .slice(0, take);
+        .filter(([statKey]) => statKey.startsWith(prefix))
+        .map(([statKey, value]) => ({ key: statKey.slice(prefix.length), count: value }))
+        .sort((first, second) => (first.key < second.key ? 1 : -1))
+        .slice(0, limit);
+    const distribution = (prefix, length, padded) => Array.from({ length }, (_, index) => count(`${prefix}${padded ? padTwo(index) : index}`));
 
-    const names = new Map([...CHARACTERS.map((c) => [c.key, c.name]), ...catalog.characters.map((c) => [c.key, c.name])]);
-    const bonds = [...names]
+    // 到達人数の多い順 (100 → 95 → … の枠で比べ、最後は登録ユーザー数)
+    const charNames = new Map([...CHARACTERS, ...catalog.characters].map((character) => [character.key, character.name]));
+    const bonds = [...charNames]
       .map(([key, name]) => ({
         key,
         name,
-        records: Math.max(0, counts[`bond_n_${key}`] ?? 0),
-        reached: Object.fromEntries(BOND_THRESHOLDS.map((t) => [t, Math.max(0, counts[`bond_ge${t}_${key}`] ?? 0)])),
+        records: count(`bond_n_${key}`),
+        reached: Object.fromEntries(BOND_THRESHOLDS.map((threshold) => [threshold, count(`bond_ge${threshold}_${key}`)])),
       }))
-      .filter((b) => b.records !== 0)
-      // 100 以上の人数が多い順。同数なら 90 以上、80 以上…の順に比べ、最後は登録ユーザー数
-      .sort((a, b) => {
-        for (const t of BOND_THRESHOLDS) if (a.reached[t] !== b.reached[t]) return b.reached[t] - a.reached[t];
-        return b.records - a.records;
+      .filter((bond) => bond.records !== 0)
+      .sort((first, second) => {
+        for (const threshold of BOND_THRESHOLDS) if (first.reached[threshold] !== second.reached[threshold]) return second.reached[threshold] - first.reached[threshold];
+        return second.records - first.records;
       });
 
-    const dist = (prefix, n, pad) => Array.from({ length: n }, (_, i) => Math.max(0, counts[`${prefix}${pad ? pad2(i) : i}`] ?? 0));
-    const totalTaps = Object.entries(counts).reduce((a, [k, v]) => (k.startsWith('tap_m_') ? a + v : a), 0);
-    return { users, pushUsers, totalTaps, hourly: dist('tap_h_', 24, true), weekly: dist('tap_w_', 7), daily: series('tap_d_', 30), monthly: series('tap_m_', 12), bonds, thresholds: BOND_THRESHOLDS };
+    const totalTaps = Object.entries(counts).reduce((sum, [statKey, value]) => (statKey.startsWith('tap_m_') ? sum + value : sum), 0);
+    return {
+      users,
+      pushUsers,
+      totalTaps,
+      hourly: distribution('tap_h_', 24, true),
+      weekly: distribution('tap_w_', 7, false),
+      daily: latestSeries('tap_d_', 30),
+      monthly: latestSeries('tap_m_', 12),
+      bonds,
+      thresholds: BOND_THRESHOLDS,
+    };
   },
 
   'POST /api/admin/test-push': async ({ env, uid }) => {
     const result = await sendTestNotification(env, uid);
-    if (!result.devices) throw new HttpError(400, 'この管理者アカウントで通知がオンになっていません。アプリ側で通知をオンにしてください。');
+    if (!result.devices) throw new HttpError(400, NO_DEVICE_MESSAGE);
     return result;
   },
 
-  // タップのテスト。記録は一切書き込まず、そのタップで何が起きるか(月・統計キー・通知予約)を返す。
-  // schedule=true のときだけ、60秒後に自分の端末へ届く通知を実際に予約して cron→FCM の経路まで確かめる
+  // 記録はせず、そのタップで何が起きるかを返す。schedule=true なら 60 秒後の通知を実際に予約する
   'POST /api/admin/test-tap': async ({ env, uid, body }) => {
-    const at = isIso(body?.tap_time) ? Date.parse(body.tap_time) : Date.now();
-    const sendAt = shouldScheduleNotification(at);
+    const tapTime = isIsoTime(body?.tap_time) ? Date.parse(body.tap_time) : Date.now();
+    const sendAt = shouldScheduleNotification(tapTime);
     const result = {
-      tap_time: new Date(at).toISOString(),
-      logical_month: logicalMonth(at),
-      stats_keys: tapKeys(at),
+      tap_time: new Date(tapTime).toISOString(),
+      logical_month: logicalMonth(tapTime),
+      stats_keys: tapStatKeys(tapTime),
       notification: sendAt
         ? { scheduled: true, send_at: new Date(sendAt).toISOString() }
         : { scheduled: false, reason: '次の 4:00 / 16:00 (JST) を跨ぐため予約しません。' },
@@ -385,115 +375,111 @@ const routes = {
       queued: null,
     };
     if (body?.schedule) {
-      if (!result.devices) throw new HttpError(400, 'この管理者アカウントで通知がオンになっていません。アプリ側で通知をオンにしてください。');
-      const when = Date.now() + 60000;
-      await addPending(env, uid, when);
-      result.queued = new Date(when).toISOString();
+      if (!result.devices) throw new HttpError(400, NO_DEVICE_MESSAGE);
+      const queuedAt = Date.now() + MINUTE;
+      await addPending(env, uid, queuedAt);
+      result.queued = new Date(queuedAt).toISOString();
     }
     return result;
   },
 
+  // 組み込みデータに取り込み済みのキャラがカタログに残っていても保存できるよう、読み飛ばす
   'PUT /api/admin/catalog': async ({ env, body }) => {
-    // 静的データ(gifts.js)に取り込み済みのキャラがカタログに残っていても、保存できるよう読み飛ばす
-    const stored = new Set((await getCatalog(env)).characters.map((c) => c.key));
-    const isStatic = (k) => CHARACTERS.some((c) => !c.extra && c.key === k);
-    const characters = Array.isArray(body?.characters) ? body.characters.filter((c) => !(stored.has(c?.key) && isStatic(c.key))) : body?.characters;
-    const catalog = validCatalog({ ...body, characters });
+    const storedKeys = new Set((await getCatalog(env)).characters.map((character) => character.key));
+    const isBuiltIn = (key) => CHARACTERS.some((character) => !character.extra && character.key === key);
+    const submitted = Array.isArray(body?.characters) ? body.characters.filter((character) => !(storedKeys.has(character?.key) && isBuiltIn(character.key))) : body?.characters ?? [];
+    const catalog = { characters: validateCatalog(submitted) };
     await setCatalog(env, catalog);
     return catalog;
   },
 
-  // ブラウザで得た認可コードを渡すと、サーバーがリフレッシュトークンを保管する(以後はトークンの受け渡し不要)
   'POST /api/auth/drive': async ({ env, uid, body }) => {
     if (!(await linkDrive(env, uid, body?.code))) throw new HttpError(400, 'Drive の連携に失敗しました。');
     return { ok: true };
   },
 
+  // Drive のデータを消したあとの後始末は、失敗してもユーザーにはエラーを返さない
   'DELETE /api/account': async ({ drive, env, uid }) => {
     await drive.removeAll();
-    // Drive のデータは消去済み。通知情報の掃除に失敗しても、ユーザーにはエラーを返さない。
     if (env.FIREBASE_SERVICE_ACCOUNT) {
       try {
         await unlinkDrive(env, uid);
         await deleteUserData(env, uid);
-      } catch (e) {
-        // 秘密情報を含み得るため、自前のメッセージ(firestore 403 など)だけを出す
-        const safe = /^(firestore \d+|service account auth failed)$/.test(e?.message) ? e.message : '';
-        console.error('deleteUserData failed', e?.name, safe);
+      } catch (error) {
+        console.error('deleteUserData failed', error?.name, safeMessage(error));
       }
     }
     return { ok: true };
   },
 
-  // データの書き出し。形式は POST /api/import がそのまま読み込める (doc/インポートファイル仕様.md)。
+  // 形式は POST /api/import がそのまま読み込める (doc/import-file.md)
   'GET /api/export': async ({ drive }) => {
-    const names = [...(await drive.index()).keys()].filter((n) => /^taps-\d{4}-\d{2}\.json$/.test(n)).sort();
+    const fileNames = [...(await drive.index()).keys()].filter((fileName) => /^taps-\d{4}-\d{2}\.json$/.test(fileName)).sort();
     const taps = [];
-    for (const n of names) {
-      for (const t of (await drive.read(n, { taps: [] })).taps) taps.push({ id: t.id, tap_time: t.tap_time });
+    for (const fileName of fileNames) {
+      for (const tap of (await drive.read(fileName, { taps: [] })).taps) taps.push({ id: tap.id, tap_time: tap.tap_time });
     }
-    taps.sort((a, b) => (a.tap_time < b.tap_time ? -1 : a.tap_time > b.tap_time ? 1 : 0));
     const profile = await readProfile(drive);
-    return {
-      schema: 1,
-      taps,
-      relationship: (await readBonds(drive)).map(({ id, char_key, bond_level, recorded_at, created_at, updated_at }) => ({
-        id, char_key, bond_level, recorded_at, created_at, updated_at,
-      })),
-      profile: { ticket1_time: profile.ticket1_time, ticket2_time: profile.ticket2_time },
-    };
+    const relationship = (await readBonds(drive)).map(({ id, char_key, bond_level, recorded_at, created_at, updated_at }) => ({
+      id,
+      char_key,
+      bond_level,
+      recorded_at,
+      created_at,
+      updated_at,
+    }));
+    return { schema: 1, taps: taps.sort(byTapTime), relationship, profile: { ticket1_time: profile.ticket1_time, ticket2_time: profile.ticket2_time } };
   },
 
-  // データのインポート。既存 ID を保持し、不正な行・重複は読み飛ばす。
+  // 既存の ID を保持し、不正な行・重複・2024 年以前と未来の記録は読み飛ばす
   'POST /api/import': async ({ drive, env, uid, body }) => {
     const result = { taps: 0, relationship: 0, skipped: 0, profile: false };
+    const latestAllowed = Date.now() + MINUTE;
 
-    const byMonth = new Map();
-    for (const t of body.taps ?? []) {
-      if (!isIso(t?.tap_time)) {
+    const tapsByMonth = new Map();
+    for (const tap of Array.isArray(body.taps) ? body.taps : []) {
+      const tapTime = isIsoTime(tap?.tap_time) ? Date.parse(tap.tap_time) : NaN;
+      if (!(tapTime >= IMPORT_FROM_TIME && tapTime <= latestAllowed)) {
         result.skipped++;
         continue;
       }
-      const ms = Date.parse(t.tap_time);
-      const m = logicalMonth(ms);
-      const [start, end] = monthRange(m);
-      if (ms < start || ms >= end) continue;
-      byMonth.set(m, [...(byMonth.get(m) ?? []), { id: isUuid(t.id) ? t.id : uuidv7(ms), tap_time: new Date(ms).toISOString() }]);
+      const month = logicalMonth(tapTime);
+      const [start, end] = monthRange(month);
+      if (tapTime < start || tapTime >= end) continue;
+      const normalized = { id: isUuid(tap.id) ? tap.id : uuidv7(tapTime), tap_time: new Date(tapTime).toISOString() };
+      tapsByMonth.set(month, [...(tapsByMonth.get(month) ?? []), normalized]);
     }
-    for (const [m, incoming] of byMonth) {
-      const existing = await readTaps(drive, m);
-      const seen = new Set(existing.map((t) => t.id));
-      const merged = [...existing];
-      for (const t of incoming) {
-        if (seen.has(t.id)) {
+    for (const [month, incoming] of tapsByMonth) {
+      const merged = await readTaps(drive, month);
+      const knownIds = new Set(merged.map((tap) => tap.id));
+      for (const tap of incoming) {
+        if (knownIds.has(tap.id)) {
           result.skipped++;
-        } else {
-          seen.add(t.id);
-          merged.push(t);
-          result.taps++;
+          continue;
         }
+        knownIds.add(tap.id);
+        merged.push(tap);
+        result.taps++;
       }
-      merged.sort((a, b) => (a.tap_time < b.tap_time ? -1 : 1));
-      await drive.write(tapsFile(m), { taps: merged });
+      await drive.write(tapsFileName(month), { taps: merged.sort(byTapTime) });
     }
 
     if (Array.isArray(body.relationship)) {
       const items = await readBonds(drive);
       const now = new Date().toISOString();
-      for (const b of body.relationship) {
-        if (validBond(b || {}) || bondExists(items, b)) {
+      for (const bond of body.relationship) {
+        if (bondError(bond || {}) || bond.recorded_at < IMPORT_FROM_DATE || bondExists(items, bond)) {
           result.skipped++;
           continue;
         }
-        const item = {
-          id: isUuid(b.id) ? b.id : uuidv7(),
-          char_key: b.char_key,
-          bond_level: b.bond_level,
-          recorded_at: b.recorded_at,
-          created_at: isIso(b.created_at) ? b.created_at : now,
-          updated_at: isIso(b.updated_at) ? b.updated_at : now,
-        };
-        items.push(item);
+        items.push({
+          id: isUuid(bond.id) ? bond.id : uuidv7(),
+          char_key: bond.char_key,
+          bond_level: bond.bond_level,
+          recorded_at: bond.recorded_at,
+          created_at: isIsoTime(bond.created_at) ? bond.created_at : now,
+          updated_at: isIsoTime(bond.updated_at) ? bond.updated_at : now,
+        });
         result.relationship++;
       }
       await drive.write('relationship.json', { items });
@@ -502,7 +488,7 @@ const routes = {
 
     if (body.profile && typeof body.profile === 'object') {
       const profile = await readProfile(drive);
-      for (const k of ['ticket1_time', 'ticket2_time']) if (isIso(body.profile[k])) profile[k] = body.profile[k];
+      for (const field of ['ticket1_time', 'ticket2_time']) if (isIsoTime(body.profile[field])) profile[field] = body.profile[field];
       profile.updated_at = new Date().toISOString();
       await drive.write('profile.json', profile);
       result.profile = true;
@@ -512,92 +498,90 @@ const routes = {
 };
 
 // Drive を使わないルート
-const NO_DRIVE = new Set(['PUT /api/devices', 'DELETE /api/devices', 'POST /api/auth/drive', 'GET /api/catalog', 'GET /api/gamedata']);
-
-// Drive を書き換えるルート。ユーザーごとの Durable Object (UserStore) で1本ずつ処理する。
-// サーバーは Drive のファイルを「読む→書き換える→丸ごと上書き」するので、別の端末からの書き込みが同時に走ると
-// 片方が消える。同じユーザーの書き込みを必ず同じオブジェクトに集め、順番に処理して防ぐ。
+const WITHOUT_DRIVE = new Set(['PUT /api/devices', 'DELETE /api/devices', 'POST /api/auth/drive', 'GET /api/catalog', 'GET /api/gamedata']);
+// Drive のファイルを丸ごと書き換えるルート。同時に走ると片方が消えるので、ユーザーごとに1本ずつ処理する
 const SERIALIZED = new Set(['POST /api/taps', 'PUT /api/profile', 'POST /api/relationship', 'DELETE /api/relationship', 'DELETE /api/account', 'POST /api/import']);
+// 回数制限が厳しい (HEAVY_LIMIT) ルート。ほかの書き込みは WRITE_LIMIT
+const HEAVY = new Set(['POST /api/import', 'POST /api/auth/drive', 'DELETE /api/account']);
 
-// 認証済みの uid でルートを実行する (Worker と UserStore の両方から呼ぶ)
-async function execute({ env, ctx, key, uid, body, url }) {
+async function execute({ env, ctx, routeKey, uid, body, url }) {
   let drive = null;
-  if (!NO_DRIVE.has(key) && !isAdminRoute(key)) {
-    const driveToken = await getAccessToken(env, uid);
-    if (!driveToken) throw new HttpError(401, 'Drive の認証が必要です。', 'drive_token');
-    drive = new Drive(driveToken, uid);
+  if (!WITHOUT_DRIVE.has(routeKey) && !isAdminRoute(routeKey)) {
+    const accessToken = await getAccessToken(env, uid);
+    if (!accessToken) throw new HttpError(401, 'Drive の認証が必要です。', 'drive_token');
+    drive = new Drive(accessToken, uid);
   }
   try {
-    return await routes[key]({ env, ctx, url, uid, drive, body });
-  } catch (e) {
-    if (e instanceof DriveError && (e.status === 401 || e.status === 403)) {
-      forgetAccessToken(uid); // 失効していたら、次の呼び出しで取り直す
+    return await routes[routeKey]({ env, ctx, url, uid, drive, body });
+  } catch (error) {
+    if (error instanceof DriveError && (error.status === 401 || error.status === 403)) {
+      forgetAccessToken(uid);
       throw new HttpError(401, 'Drive の認証が失効しました。', 'drive_token');
     }
-    throw e;
+    throw error;
   }
 }
 
-// ユーザーごとに1つ。書き込みを受け取った順に1本ずつ処理する。
-// Drive のアクセストークンとファイル一覧もここに残るので (driveauth.js / drive.js のキャッシュ)、2回目以降は速い。
-// 何も保存しない (状態はメモリの待ち行列だけ)
+// ユーザーごとの書き込みを受け取った順に処理する Durable Object (メモリの待ち行列だけで、何も保存しない)
 export class UserStore extends DurableObject {
   #queue = Promise.resolve();
 
-  // RPC で例外の型は保てないので、結果を { data } / { error } で返す
-  run(key, uid, body, href) {
-    const job = this.#queue.then(() => execute({ env: this.env, ctx: this.ctx, key, uid, body, url: new URL(href) }));
+  run(routeKey, uid, body, href) {
+    const job = this.#queue.then(() => execute({ env: this.env, ctx: this.ctx, routeKey, uid, body, url: new URL(href) }));
     this.#queue = job.catch(() => {});
     return job.then(
       (data) => ({ data }),
-      (e) => {
-        if (e instanceof HttpError) return { error: { status: e.status, message: e.message, code: e.code } };
-        console.error('unhandled error in UserStore', e?.name);
+      (error) => {
+        if (error instanceof HttpError) return { error: { status: error.status, message: error.message, code: error.code } };
+        console.error('unhandled error in UserStore', error?.name, safeMessage(error));
         return { error: { status: 500, message: 'サーバーエラーが発生しました。' } };
       },
     );
   }
 }
 
+// 認証 → 管理者の確認 → 回数制限 → 実行
 async function handle(request, env, ctx) {
   const url = new URL(request.url);
-  const key = `${request.method} ${url.pathname}`;
-  if (!routes[key]) throw new HttpError(404, 'Not Found');
+  const routeKey = `${request.method} ${url.pathname}`;
+  if (!routes[routeKey]) throw new HttpError(404, 'Not Found');
 
   const bearer = /^Bearer (.+)$/.exec(request.headers.get('Authorization') ?? '')?.[1];
-  const uid = bearer && (await verifyIdToken(bearer, env.FIREBASE_PROJECT_ID));
-  if (!uid) throw new HttpError(401, '認証が必要です。', 'id_token');
+  const token = bearer && (await verifyIdToken(bearer, env.FIREBASE_PROJECT_ID));
+  if (!token) throw new HttpError(401, '認証が必要です。', 'id_token');
+  const uid = token.sub;
 
-  if (isAdminRoute(key) && !isAdmin(env, uid)) throw new HttpError(403, '管理者ではありません。');
+  if (isAdminRoute(routeKey) && !(isAdmin(env, uid) && (await isAccountActive(env, uid, token.iat)))) {
+    throw new HttpError(403, '管理者ではありません。');
+  }
 
   let body = {};
   if (request.method !== 'GET') {
-    try {
-      body = (await request.json()) ?? {};
-    } catch {
-      /* ボディなし */
+    const limiter = HEAVY.has(routeKey) ? env.HEAVY_LIMIT : env.WRITE_LIMIT;
+    if (limiter && !(await limiter.limit({ key: uid })).success) {
+      throw new HttpError(429, '操作が多すぎます。しばらく待ってからやり直してください。', 'rate_limited');
     }
+    body = (await request.json().catch(() => null)) ?? {};
   }
 
-  if (SERIALIZED.has(key) && env.USER_STORE) {
-    const r = await env.USER_STORE.get(env.USER_STORE.idFromName(uid)).run(key, uid, body, url.href);
-    if (r.error) throw new HttpError(r.error.status, r.error.message, r.error.code);
-    return json(r.data);
+  if (SERIALIZED.has(routeKey) && env.USER_STORE) {
+    const result = await env.USER_STORE.get(env.USER_STORE.idFromName(uid)).run(routeKey, uid, body, url.href);
+    if (result.error) throw new HttpError(result.error.status, result.error.message, result.error.code);
+    return json(result.data);
   }
-  return json(await execute({ env, ctx, key, uid, body, url }));
+  return json(await execute({ env, ctx, routeKey, uid, body, url }));
 }
 
 export default {
+  // 書き込みは、端末が途中で切断しても最後まで処理する
   async fetch(request, env, ctx) {
     try {
       const work = handle(request, env, ctx);
-      // 書き込みは、端末が途中で切断しても(押してすぐアプリを閉じられても)最後まで処理する
       if (request.method !== 'GET') ctx.waitUntil(work.catch(() => {}));
       return await work;
-    } catch (e) {
-      if (e instanceof HttpError) return json({ error: e.message, code: e.code }, e.status);
-      // トークン等を含み得るため、詳細はログに出さない
-      console.error('unhandled error', e?.name);
+    } catch (error) {
+      if (error instanceof HttpError) return json({ error: error.message, code: error.code }, error.status);
+      console.error('unhandled error', error?.name, safeMessage(error));
       return json({ error: 'サーバーエラーが発生しました。' }, 500);
     }
   },

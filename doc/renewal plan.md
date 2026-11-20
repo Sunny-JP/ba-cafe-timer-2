@@ -2,6 +2,8 @@
 
 作成日: 2026-10-17 / 対象: cafetimer.rabbit1.cc
 
+> この文書は開発当初の設計と計画の記録です。ファイル構成はその後まとめ直したため、現在の構成・仕様は [manual.md](manual.md) を参照してください。
+
 ## 1. 目的と方針
 
 Next.js (Next on Pages) 上で動く現行の Cafe Timer を、保守しやすくシンプルな構成へ作り直す。
@@ -72,7 +74,7 @@ cafetimer/
 │  │  ├─ auth.js                # Google ログイン・トークン取得
 │  │  ├─ push.js                # FCM 登録
 │  │  └─ time.js                # JST 計算・表示・UUID v7 (Worker と共用)
-│  ├─ data/gifts.js             # 定数と、/api/gamedata で取得したデータの保持 (データ本体は src/data/gamedata.js)
+│  ├─ data/gifts.js             # 定数と、/api/gamedata で取得したデータの保持 (データ本体は src/gamedata.js)
 │  └─ img/                      # アイコン・ogp・gifts.png
 ├─ src/
 │  ├─ worker.js                 # ルーティング・cron

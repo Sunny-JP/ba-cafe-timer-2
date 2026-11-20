@@ -5,21 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="robots" content="noindex" />
     <title>タップテスト | Cafe Timer 2 管理</title>
-    <script>
-      try {
-        const r = document.documentElement,
-          m = localStorage.getItem("ct.mode"),
-          c = localStorage.getItem("ct.accent");
-        if (m === "light" || m === "dark") r.dataset.mode = m;
-        if (c && /^#[0-9a-f]{6}$/i.test(c)) r.style.setProperty("--accent", c);
-      } catch {}
-    </script>
     <link rel="icon" href="/img/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500&display=swap" />
     <link rel="stylesheet" href="/css/app.css" />
     <link rel="stylesheet" href="/css/admin.css" />
+    <script src="/js/theme-init.js"></script>
   </head>
-  <body>
+  <body data-page="taptest">
     <main id="login" class="center" hidden>
       <h1>Cafe Timer 2 管理</h1>
       <button id="login-btn" class="primary">Google でログイン</button>
@@ -43,6 +35,6 @@
     </div>
 
     <div id="toast" role="status" hidden></div>
-    <script type="module" src="/js/admin/taptest.js"></script>
+    <script type="module" src="/dist/admin.js"></script>
   </body>
 </html>
