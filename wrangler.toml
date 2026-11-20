@@ -1,6 +1,10 @@
 name = "ba-cafe-timer-2"
 main = "src/worker.js"
 compatibility_date = "2026-10-01"
+workers_dev = false
+routes = [
+  { pattern = "cafetimer2.rabbit1.cc", custom_domain = true }
+]
 
 [build]
 command = "npm run build"
