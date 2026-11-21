@@ -90,11 +90,5 @@ npm test                            # テスト
 curl.exe "http://localhost:8787/__scheduled?cron=*+*+*+*+*"
 ```
 
-## 開発メモ
-
-- コードを変更したら、`doc/manual.md` の該当箇所も同じ変更の中で更新し、`node scripts/spec-pdf.mjs` で PDF を作り直してください。
-- コードの書き方: コメントは処理の概要や理由だけを短く書く。変数名は省略しない (`e` → `error`、`res` → `response` など。ループの添字も `index` など意味のある名前にする)。フォルダは浅く保ち、`public/js/` と `src/` の下にさらにフォルダを作らない。
-- `public/js/time.js` と `public/js/config.js` は DOM に依存しないため、Worker からも import しています。JST・4:00 区切りの計算は `time.js` だけに置いてください。
-- CSP を強制しているため、インラインスクリプトとインラインのイベント属性(`onclick=` など)は使えません。外部から読み込むものを足すときは `public/_headers` も直してください。
-- 画面の文言は `public/lang/*.json` にあります。新しい文言は、4 言語分を追加してください。
-- 秘密情報(サービスアカウントなど)は Git に入れません。`.dev.vars` と `service-account.json` は `.gitignore` に入っています。
+## 免責事項
+本ツールは個人による非公式のファンメイドサイトであり、株式会社NEXON、株式会社Yostar、およびその他の全ての関連会社とは一切関係ありません。
