@@ -3,7 +3,7 @@ import { log, preloadGsi } from "./api.js";
 import { drawChart } from "./chart.js";
 import { getLang, t } from "./i18n.js";
 import { DEMO, DEMO_ACTIONS, state, store } from "./state.js";
-import { calendarBody, icon, noticeBanner, renderBond, renderCalendar, renderDoc, renderLogList, renderMenu, renderSettings, renderTimer, skeleton, tick } from "./views.js";
+import { calendarBody, icon, noticeBanner, renderAds, renderBond, renderCalendar, renderDoc, renderLogList, renderMenu, renderSettings, renderTimer, skeleton, tick } from "./views.js";
 
 export const $ = (selector) => document.querySelector(selector);
 export const view = $("#view");
@@ -24,7 +24,10 @@ function tabHtml(tab) {
 
 export function render(animate = false) {
   const tab = currentTab();
+  const ads = $("#ads");
+  if (ads && view.contains(ads)) view.after(ads);
   view.innerHTML = tabHtml(tab);
+  placeAds();
   if ($("#menu").open) renderMenuBody();
   const notice = $("#notice");
   notice.hidden = !(tab === "timer" && state.notice);
@@ -39,6 +42,20 @@ export function render(animate = false) {
     void view.offsetWidth;
     view.classList.add("enter");
   }
+}
+
+// 広告は #ads に一度だけ描き、タブを切り替えても描き直さない。2 列の画面では左の列の下へ移す
+export function showAds() {
+  const ads = $("#ads");
+  ads.innerHTML = renderAds(state);
+  ads.hidden = !state.ads?.length;
+  placeAds();
+}
+
+function placeAds() {
+  const ads = $("#ads");
+  const leftColumn = wide.matches && view.querySelector(".cols > div");
+  if (ads && leftColumn) leftColumn.append(ads);
 }
 
 // カレンダー部分 (#cal-area) だけを描き直す。表示されていなければ何もしない

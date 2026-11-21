@@ -202,4 +202,6 @@ export const api = {
   adminTestPush: () => request("POST", "/api/admin/test-push"),
   adminTestTap: (body) => request("POST", "/api/admin/test-tap", body),
   adminSaveCatalog: (catalog) => request("PUT", "/api/admin/catalog", catalog),
+  adminAds: () => request("GET", "/api/admin/ads"),
+  adminSetAds: (enabled) => request("PUT", "/api/admin/ads", { enabled }),
 };

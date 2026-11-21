@@ -45,7 +45,7 @@ Cloudflare Workers(API と静的ファイル配信)+ Firebase(認証・通知)+ 
 ```
 public/                     静的ファイル (そのまま配信される)
   index.html / demo.html    アプリ本体 / 使い方ガイド用のデモ
-  admin/*.html              管理画面
+  admin/index.html          管理画面 (タブで切り替え)
   js/                       画面の JS (ビルドで dist/ に束ねる。各ファイルの役割は doc/manual.md)
   css/  lang/  img/         スタイル・文言 (4 言語)・画像
   _headers                  セキュリティヘッダー (CSP)

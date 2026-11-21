@@ -149,6 +149,21 @@ export async function setCatalog(env, catalog) {
   catalogCache = { value: catalog, expiresAt: Date.now() + 30000 };
 }
 
+// 広告配信のオン・オフ (config/ads)。設定がなければオフ
+let adsConfigCache = { value: null, expiresAt: 0 };
+
+export async function getAdsConfig(env) {
+  if (adsConfigCache.value && adsConfigCache.expiresAt > Date.now()) return adsConfigCache.value;
+  const value = await readJsonField(env, "/config/ads", { enabled: false });
+  adsConfigCache = { value, expiresAt: Date.now() + 30000 };
+  return value;
+}
+
+export async function setAdsConfig(env, config) {
+  await writeJsonField(env, "/config/ads", config);
+  adsConfigCache = { value: config, expiresAt: Date.now() + 30000 };
+}
+
 // ---- 統計 (件数の加減算だけで、個人を特定する情報は持たない) ----
 
 export async function addCounts(env, deltas) {

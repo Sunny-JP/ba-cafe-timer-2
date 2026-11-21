@@ -207,6 +207,7 @@ export const SKELETON = {
   <ul>
     <li>{{privacy.li10}}</li>
     <li>{{privacy.li11}}</li>
+    <li>{{privacy.li12}}</li>
   </ul>
   
 
@@ -808,6 +809,9 @@ export const TEXT = {
   },
   "privacy.li11": {
     ja: `Cloudflare Browser Insights: サイトのパフォーマンスや接続状況を分析するために使用されます。`,
+  },
+  "privacy.li12": {
+    ja: `楽天アフィリエイト: タイマー画面に「PR」と表示した楽天市場の商品リンクは広告です。リンク先で商品が購入されると運営者に報酬が支払われることがあり、その計測のために楽天がCookieを使用します。`,
   },
   "privacy.h5": {
     ja: `5. 第三者への提供`,

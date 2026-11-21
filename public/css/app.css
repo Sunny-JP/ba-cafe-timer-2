@@ -25,7 +25,8 @@ body {
   background: var(--surface);
   color: var(--on-surface);
   font: 400 15px/1.6 var(--font);
-  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  --nav-space: calc(80px + env(safe-area-inset-bottom));
+  padding-bottom: var(--nav-space);
 }
 [hidden] { display: none !important; }
 h1, h2, h3, p { margin: 0; }
@@ -251,6 +252,7 @@ dialog#menu {
 /* ---- ゆとりのある余白 + 現行の斜め・欠け角の意匠 ---- */
 .appbar { padding: 18px 24px; }
 #view { max-width: var(--w); padding: 16px 24px 32px; gap: 8px; }
+#ads { width: 100%; max-width: var(--w); margin: 0 auto; padding: 0 24px 12px; }
 .block { gap: 14px; padding: 20px 0; }
 .block + .block { border-top: 1px solid color-mix(in srgb, var(--outline) 60%, transparent); margin-top: 16px; }
 .card { padding: 20px; }
@@ -548,7 +550,7 @@ html { overflow-x: clip; }
 @media (max-width: 480px) {
   .bond-row { gap: 10px; }
   .record { padding: 0 20px; }
-  #view { padding-inline: 16px; }
+  #view, #ads { padding-inline: 16px; }
   .appbar { padding-inline: 16px; }
 }
 
@@ -561,7 +563,7 @@ html { overflow-x: clip; }
 
 /* ---- スマホ: 縦方向を詰める ---- */
 @media (max-width: 600px) {
-  body { font-size: 14px; padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+  body { font-size: 14px; --nav-space: calc(60px + env(safe-area-inset-bottom)); }
   .appbar { padding-block: 10px; font-size: 1.125rem; }
   #view { padding-block: 4px 16px; gap: 0; }
   .block { gap: 8px; padding: 12px 0; }
@@ -597,7 +599,7 @@ html { overflow-x: clip; }
 
 /* ---- スマホ: 持ったときの誤タップを避けるため左右の余白を広げる ---- */
 @media (max-width: 600px) {
-  #view { padding-inline: 28px; }
+  #view, #ads { padding-inline: 28px; }
   .appbar { padding-inline: 28px; }
   #app > nav { padding-inline: 20px; }
   #toast { left: 28px; right: 28px; }
@@ -656,7 +658,7 @@ button.home:hover:not(:disabled) { background: transparent; }
 
 /* ---- 小さい端末 (iPhone SE など): 折り返し・欠けを防ぐ ---- */
 @media (max-width: 400px) {
-  #view, .appbar { padding-inline: 20px; }
+  #view, #ads, .appbar { padding-inline: 20px; }
   #toast { left: 20px; right: 20px; }
   .bond-row { grid-template-columns: 60px minmax(0, 1fr) auto; gap: 8px; }
   .bond-row input { font-size: .875rem; padding-inline: 8px; }
@@ -807,3 +809,21 @@ label.menu-item:focus-visible { outline: 2px solid var(--primary); outline-offse
 }
 .sync[hidden] { display: none; }
 .sync.waiting { animation: none; border-color: var(--on-variant); opacity: .45; width: 8px; height: 8px; margin-inline: 3px 9px; }
+
+/* ---- 広告: #view が残りの高さを埋めるので、画面に余裕があればナビの上、なければ内容の下に来る ---- */
+#app:not([hidden]) { display: flex; flex-direction: column; min-height: calc(100dvh - var(--nav-space)); }
+#view { flex: 1 0 auto; width: 100%; align-content: start; }
+.ads { padding-top: 12px; display: grid; gap: 4px; min-width: 0; }
+.cols #ads { max-width: none; margin: 0; padding: 16px 0 0; }
+.ads-label { font-size: .6875rem; color: var(--on-variant); letter-spacing: .04em; }
+.ads-list { list-style: none; margin: 0; padding: 0 0 2px; display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.ads-list li { flex: none; }
+.ads-list a { display: grid; gap: 2px; width: 88px; color: inherit; text-decoration: none; font-size: .6875rem; line-height: 1.35; opacity: .85; }
+.ads-list a:hover { opacity: 1; }
+.ads-list img { width: 88px; height: 88px; object-fit: contain; border-radius: 8px; background: #fff; }
+.ads-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--on-variant); }
+.ads-price { font-weight: 500; }
+@media (max-width: 600px) {
+  .ads-list a { width: 72px; }
+  .ads-list img { width: 72px; height: 72px; }
+}

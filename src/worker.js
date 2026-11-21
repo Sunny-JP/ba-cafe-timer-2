@@ -7,6 +7,7 @@ import {
   countDevices,
   countUsers,
   deleteUserData,
+  getAdsConfig,
   getBondStats,
   getCatalog,
   getCounts,
@@ -15,6 +16,7 @@ import {
   removePending,
   sendDueNotifications,
   sendTestNotification,
+  setAdsConfig,
   setBondStats,
   setCatalog,
   setDevices,
@@ -169,6 +171,90 @@ function validateCatalog(characters) {
   });
 }
 
+// ---- 広告 (楽天市場) ----
+// 正規取扱店 (新品のみ) の shopCode。ここに載せた店の商品だけを出す
+const AD_SHOP_CODES = [];
+const AD_KEYWORD = 'ブルーアーカイブ';
+const AD_NG_KEYWORD = '中古 USED ジャンク';
+const AD_SEARCH_API = 'https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601';
+const AD_CACHE_URL = 'https://cafetimer2.rabbit1.cc/__cache/ads';
+const AD_CACHE_SECONDS = 6 * 60 * 60;
+const AD_COUNT = 10;
+
+const affiliateLink = (affiliateId, targetUrl) =>
+  `https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/?pc=${encodeURIComponent(targetUrl)}&m=${encodeURIComponent(targetUrl)}`;
+
+// アプリ ID がまだない間、手元で見た目を確かめるための仮の商品 (.dev.vars に ADS_SAMPLE=1)
+function sampleAds(env) {
+  const searchUrl = `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(AD_KEYWORD)}/`;
+  const url = env.RAKUTEN_AFFILIATE_ID ? affiliateLink(env.RAKUTEN_AFFILIATE_ID, searchUrl) : searchUrl;
+  return Array.from({ length: 8 }, (_, index) => ({ name: `サンプル商品 ${index + 1} ブルーアーカイブ 公式グッズ`, price: 990 * (index + 1), image: '/img/icon.svg', url }));
+}
+
+async function searchShop(env, shopCode) {
+  const query = new URLSearchParams({
+    applicationId: env.RAKUTEN_APP_ID,
+    affiliateId: env.RAKUTEN_AFFILIATE_ID ?? '',
+    format: 'json',
+    formatVersion: '2',
+    keyword: AD_KEYWORD,
+    NGKeyword: AD_NG_KEYWORD,
+    shopCode,
+    imageFlag: '1',
+    availability: '1',
+    hits: '30',
+  });
+  const response = await fetch(`${AD_SEARCH_API}?${query}`);
+  if (!response.ok) throw new Error(`rakuten ${response.status}`);
+  const { Items: items = [] } = await response.json();
+  return items.map((item) => ({
+    name: item.itemName,
+    price: item.itemPrice,
+    image: (item.mediumImageUrls?.[0] ?? '').replace(/\?_ex=\d+x\d+$/, '?_ex=200x200'),
+    url: item.affiliateUrl || item.itemUrl,
+  }));
+}
+
+// 楽天の API は 1 秒に 1 回までなので、店ごとに間を空けて読み、結果は 6 時間キャッシュする
+async function fetchAds(env, ctx) {
+  const cache = caches.default;
+  const cached = await cache.match(AD_CACHE_URL);
+  if (cached) return cached.json();
+  const items = [];
+  for (const [index, shopCode] of AD_SHOP_CODES.entries()) {
+    if (index) await new Promise((resolve) => setTimeout(resolve, 1100));
+    try {
+      items.push(...(await searchShop(env, shopCode)));
+    } catch (error) {
+      console.warn('ads search failed', shopCode, error?.message);
+    }
+  }
+  const usable = items.filter((item) => item.name && item.image.startsWith('https://') && item.url.startsWith('https://'));
+  const response = Response.json(usable, { headers: { 'Cache-Control': `max-age=${AD_CACHE_SECONDS}` } });
+  ctx.waitUntil(cache.put(AD_CACHE_URL, response));
+  return usable;
+}
+
+// 管理画面で配信をオフにしたときは空を返す (端末は広告の枠ごと出さない)
+async function adsEnabled(env) {
+  if (!env.FIREBASE_SERVICE_ACCOUNT) return false;
+  try {
+    return (await getAdsConfig(env)).enabled === true;
+  } catch (error) {
+    console.warn('ads config read failed', safeMessage(error));
+    return false;
+  }
+}
+
+async function handleAds(env, ctx) {
+  let items = [];
+  if (!(await adsEnabled(env))) items = [];
+  else if (env.ADS_SAMPLE === '1') items = sampleAds(env);
+  else if (env.RAKUTEN_APP_ID && AD_SHOP_CODES.length) items = await fetchAds(env, ctx);
+  const shuffled = items.map((item) => [Math.random(), item]).sort((first, second) => first[0] - second[0]).map(([, item]) => item);
+  return json({ items: shuffled.slice(0, AD_COUNT) });
+}
+
 // ---- ルート ----
 
 const routes = {
@@ -312,6 +398,14 @@ const routes = {
   },
 
   'GET /api/admin/me': async () => ({ ok: true }),
+
+  'GET /api/admin/ads': async ({ env }) => ({ enabled: (await getAdsConfig(env)).enabled === true }),
+
+  'PUT /api/admin/ads': async ({ env, body }) => {
+    if (typeof body?.enabled !== 'boolean') throw new HttpError(400, 'enabled が不正です。');
+    await setAdsConfig(env, { enabled: body.enabled });
+    return { enabled: body.enabled };
+  },
 
   'GET /api/admin/stats': async ({ env }) => {
     const [counts, catalog, pushUsers, users] = await Promise.all([getCounts(env), getCatalog(env), countDevices(env), countUsers(env)]);
@@ -576,6 +670,7 @@ export default {
   // 書き込みは、端末が途中で切断しても最後まで処理する
   async fetch(request, env, ctx) {
     try {
+      if (request.method === 'GET' && new URL(request.url).pathname === '/api/ads') return await handleAds(env, ctx);
       const work = handle(request, env, ctx);
       if (request.method !== 'GET') ctx.waitUntil(work.catch(() => {}));
       return await work;

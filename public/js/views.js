@@ -86,6 +86,20 @@ export function renderTimer(state, now = Date.now()) {
     </section>`;
 }
 
+export function renderAds(state) {
+  if (!state.ads?.length) return "";
+  const cards = state.ads
+    .map(
+      (item) => `<li><a href="${esc(item.url)}" target="_blank" rel="sponsored noopener noreferrer">
+        <img src="${esc(item.image)}" alt="" loading="lazy" decoding="async">
+        <span class="ads-name">${esc(item.name)}</span>
+        <span class="ads-price">¥${Number(item.price).toLocaleString("ja-JP")}</span>
+      </a></li>`,
+    )
+    .join("");
+  return `<p class="ads-label">PR｜${esc(t("rakutenIchiba"))}</p><ul class="ads-list">${cards}</ul>`;
+}
+
 // ---- カレンダー ----
 
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];

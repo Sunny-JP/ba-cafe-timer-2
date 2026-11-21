@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="/css/admin.css" />
     <script src="/js/theme-init.js"></script>
   </head>
-  <body data-page="home">
+  <body>
     <main id="login" class="center" hidden>
       <h1>Cafe Timer 2 管理</h1>
       <button id="login-btn" class="primary">Google でログイン</button>
@@ -20,12 +20,72 @@
     <div id="admin" hidden>
       <div id="shell"></div>
       <div id="content" hidden>
-        <div class="cards">
-          <a class="card" href="/admin/push"><b>通知</b><span>テスト通知を送る</span></a>
-          <a class="card" href="/admin/stats"><b>統計</b><span>ユーザー数・タップ数・絆</span></a>
-          <a class="card" href="/admin/taptest"><b>タップテスト</b><span>タップ時の処理を記録なしで確認</span></a>
-          <a class="card" href="/admin/characters"><b>キャラクター追加</b><span>キャラと好きな贈り物</span></a>
-        </div>
+        <section data-tab="push">
+          <h2>テスト通知</h2>
+          <p class="note">このアカウントで通知をオンにしている端末へ送ります(他のユーザーには送りません)。</p>
+          <div class="row"><button id="test-push" class="primary">テスト通知を送る</button></div>
+          <p id="push-result" class="result"></p>
+        </section>
+        <section data-tab="stats" hidden>
+          <h2>統計</h2>
+          <p class="note">個人を特定できる情報は保存せず、件数のみを集計しています。日付は UTC、時間帯・曜日は JST です。</p>
+          <div class="kpis" id="cards"></div>
+          <div class="grid2">
+            <section class="panel">
+              <h2>時間帯別タップ数</h2>
+              <div class="sub" id="hourly-sub"></div>
+              <div class="vbars" id="hourly"></div>
+              <div class="axis" id="hourly-axis"></div>
+            </section>
+            <section class="panel">
+              <h2>曜日別タップ数</h2>
+              <div class="sub" id="weekly-sub"></div>
+              <div class="vbars" id="weekly"></div>
+              <div class="axis" id="weekly-axis"></div>
+            </section>
+          </div>
+          <section class="panel">
+            <h2>キャラ別の絆ランキング</h2>
+            <div class="rank" id="bonds"></div>
+            <p class="note">1人は1キャラにつき1つの枠にだけ数えます(50 未満はどの枠にも入りません)。「登録」はそのキャラを1回でも登録したことのあるユーザー数です。</p>
+          </section>
+        </section>
+        <section data-tab="taptest" hidden>
+          <h2>タップテスト</h2>
+          <p class="note">タップの記録・統計には一切書き込みません。指定した時刻にタップした場合に何が起きるか(論理月・統計キー・通知予約)を確認します。</p>
+          <div class="row">
+            <label>タップ時刻(空欄なら現在)<input type="datetime-local" id="tap-time" step="60" /></label>
+            <button id="run" class="primary">シミュレート</button>
+          </div>
+          <p id="sim-result" class="result"></p>
+          <h2>通知の通し確認</h2>
+          <p class="note">60秒後に、この管理者の端末へ通常のタップ通知を届くよう実際に予約します(cron → FCM の経路の確認)。届くまで最大1〜2分かかります。</p>
+          <div class="row"><button id="queue">60秒後に通知を予約</button></div>
+          <p id="queue-result" class="result"></p>
+        </section>
+        <section data-tab="characters" hidden>
+          <h2>キャラクターの追加</h2>
+          <p class="note">好きな贈り物をタップして効果を選びます(タップするたびに 未選択 → 通常・中 → 通常・大 → 通常・特大 → 高級・大 → 高級・特大 → 未選択)。1つ以上選ぶ必要があります。</p>
+          <form id="char-form" class="row">
+            <label>key (英小文字・数字・_)<input name="key" required pattern="[a-z0-9_]{1,64}" placeholder="new_student" /></label>
+            <label>名前 (日本語)<input name="name" required maxlength="64" /></label>
+            <label>名前 (English)<input name="en" required maxlength="64" /></label>
+            <label>名前 (中文・任意)<input name="zh" maxlength="64" /></label>
+            <label>名前 (한국어・任意)<input name="ko" maxlength="64" /></label>
+            <button class="primary">追加</button>
+            <span id="picked-count" class="note"></span>
+          </form>
+          <div class="picker" id="picker"></div>
+          <h2>現在の設定 (全キャラクター)</h2>
+          <p class="note">組み込みのキャラと、ここで追加したキャラ(「追加」バッジ)を表示します。削除できるのは追加したキャラだけです。効果の略記: 通=通常 / 高=高級、中・大・特=効果の大きさ。中国語・韓国語が未入力のキャラは、アプリでは英語名を表示します。</p>
+          <div class="row"><input id="char-filter" type="search" placeholder="key・名前で絞り込み" style="flex: 1 1 200px" /><span id="char-count" class="note"></span></div>
+          <ul class="list charlist" id="char-list"></ul>
+        </section>
+        <section data-tab="ads" hidden>
+          <h2>広告配信</h2>
+          <p class="note">オフにすると、すべての利用者で広告の枠 (PR｜楽天市場) が出なくなります。切り替えは 30 秒ほどで反映され、開いている画面には開き直したときに反映されます。</p>
+          <div class="row"><span id="ads-state">読み込み中…</span><button id="ads-toggle" class="primary" disabled>切り替え</button></div>
+        </section>
       </div>
     </div>
 

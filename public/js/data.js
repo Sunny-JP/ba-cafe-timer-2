@@ -5,7 +5,7 @@ import { t } from "./i18n.js";
 import { discardOutbox, flush, latestWithQueued, queueProfile, queueTap, withQueuedProfile, withQueuedTaps } from "./outbox.js";
 import { logicalMonth, nextTapTime, shouldScheduleNotification, uuidv7 } from "./time.js";
 import { initBondChar, loadRelCache, saveBootCache, saveRelCache, state, store } from "./state.js";
-import { $, busy, confirmDialog, downloadBlob, render, renderCalendarArea, showReauth, toTimerScreen, toast, withBusy } from "./ui.js";
+import { $, busy, confirmDialog, downloadBlob, render, renderCalendarArea, showAds, showReauth, toTimerScreen, toast, withBusy } from "./ui.js";
 
 // ---- エラー処理 ----
 
@@ -99,6 +99,19 @@ export async function refresh(force = false) {
     }
   } catch (error) {
     log.warn("load", "refresh failed", error);
+  }
+}
+
+// 広告は一度だけ読む。読めなければ出さない
+export async function loadAds() {
+  if (state.ads) return;
+  try {
+    const response = await fetch("/api/ads");
+    if (!response.ok) throw new Error(`ads ${response.status}`);
+    state.ads = (await response.json()).items ?? [];
+    showAds();
+  } catch (error) {
+    log.warn("ads", "load failed", error);
   }
 }
 

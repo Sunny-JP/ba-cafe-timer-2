@@ -1,4 +1,4 @@
-// 管理画面 (/admin/*)。各ページの <body data-page="…"> で処理を選ぶ。権限の判定はサーバー (ADMIN_UIDS) が行う
+// 管理画面 (/admin/)。1 つのページの中で URL の #stats などでタブを切り替える (なければ通知。読み込み直さない)。権限の判定はサーバー (ADMIN_UIDS) が行う
 import { api, login, logout, onUser, setVerbose } from "./api.js";
 import { CHARACTERS, GIFTS, GIFT_EXP, RATE_COLOR, SPRITE, applyCatalog, ensureGameData, favoriteGifts } from "./gamedata.js";
 import { studentNames } from "./i18n.js";
@@ -16,11 +16,12 @@ function toast(message) {
   toastTimer = setTimeout(() => (element.hidden = true), 3500);
 }
 
-const PAGES = [
-  ["push", "/admin/push", "通知"],
-  ["stats", "/admin/stats", "統計"],
-  ["taptest", "/admin/taptest", "タップテスト"],
-  ["characters", "/admin/characters", "キャラクター追加"],
+const TABS = [
+  ["push", "通知"],
+  ["stats", "統計"],
+  ["taptest", "タップテスト"],
+  ["characters", "キャラクター追加"],
+  ["ads", "広告配信"],
 ];
 
 // 結果欄に出す (失敗は赤字)
@@ -247,19 +248,57 @@ function initCharactersPage() {
   };
 }
 
+// ---- 広告配信の切り替え ----
+
+function initAdsPage() {
+  const button = $("#ads-toggle");
+  let enabled = false;
+  const showState = () => {
+    $("#ads-state").textContent = `現在: ${enabled ? "オン" : "オフ"}`;
+    button.textContent = enabled ? "オフにする" : "オンにする";
+    button.disabled = false;
+  };
+  button.onclick = async () => {
+    button.disabled = true;
+    try {
+      enabled = (await api.adminSetAds(!enabled)).enabled;
+      toast(`広告配信を${enabled ? "オン" : "オフ"}にしました`);
+    } catch (error) {
+      toast(error.message);
+    }
+    showState();
+  };
+  return async () => {
+    try {
+      enabled = (await api.adminAds()).enabled;
+      showState();
+    } catch (error) {
+      $("#ads-state").textContent = error.message;
+    }
+  };
+}
+
 // ---- 共通: ナビ・ログイン・管理者の確認 (管理者でなければアプリへ戻す) ----
 
-const PAGE_SETUP = { push: initPushPage, taptest: initTapTestPage, stats: initStatsPage, characters: initCharactersPage };
-const page = document.body.dataset.page;
-const onReady = PAGE_SETUP[page]?.() ?? (() => {});
+// 各タブの準備はページを開いたときに一度だけ行い、管理者と確認できたら読み込みも一度だけ行う
+const onReadyList = [...new Set([initPushPage, initStatsPage, initTapTestPage, initCharactersPage, initAdsPage].map((setup) => setup()))];
 
 $("#shell").innerHTML = `
   <div class="row" style="justify-content: space-between">
-    <h1><a href="/admin/" style="text-decoration:none;color:inherit">Cafe Timer 2 管理</a></h1>
+    <h1><a href="#push" style="text-decoration:none;color:inherit">Cafe Timer 2 管理</a></h1>
     <span><a href="/">アプリへ</a> <button id="logout-btn" class="ghost">ログアウト</button></span>
   </div>
-  <nav class="adminnav">${PAGES.map(([id, href, label]) => `<a href="${href}"${id === page ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>
+  <nav class="adminnav">${TABS.map(([id, label]) => `<a href="#${id}" data-tab-link="${id}">${label}</a>`).join("")}</nav>
   <p id="denied" class="err" hidden></p>`;
+
+function showTab() {
+  const current = TABS.some(([id]) => `#${id}` === location.hash) ? location.hash.slice(1) : TABS[0][0];
+  for (const section of document.querySelectorAll("#content > section")) section.hidden = section.dataset.tab !== current;
+  for (const link of document.querySelectorAll("[data-tab-link]")) link.toggleAttribute("aria-current", link.dataset.tabLink === current);
+  scrollTo(0, 0);
+}
+addEventListener("hashchange", showTab);
+showTab();
 $("#login-btn").onclick = () => login().catch((error) => toast(error.message));
 $("#logout-btn").onclick = () => logout();
 
@@ -280,5 +319,5 @@ onUser(async (user) => {
   setVerbose(true);
   $("#admin").hidden = false;
   $("#content").hidden = false;
-  onReady(user);
+  for (const onReady of onReadyList) onReady(user);
 });

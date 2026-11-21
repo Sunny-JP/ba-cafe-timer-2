@@ -9,6 +9,7 @@ import {
   guarded,
   importFile,
   link,
+  loadAds,
   loadAll,
   loadCalendar,
   loadDeferred,
@@ -226,11 +227,11 @@ function initEvents() {
   const isTextField = (event) => event.target instanceof Element && event.target.closest("input, textarea");
   for (const type of ["copy", "cut", "selectstart", "dragstart"]) document.addEventListener(type, (event) => isTextField(event) || event.preventDefault());
 
-  // 贈物の一覧はマウスホイールの縦回転でも横にスクロールする
+  // 贈物と広告の一覧はマウスホイールの縦回転でも横にスクロールする
   document.addEventListener(
     "wheel",
     (event) => {
-      const list = event.target instanceof Element && event.target.closest(".gifts");
+      const list = event.target instanceof Element && event.target.closest(".gifts, .ads-list");
       if (list && list.scrollWidth > list.clientWidth && Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
         list.scrollLeft += event.deltaY;
         event.preventDefault();
@@ -352,6 +353,7 @@ function startApp() {
       flush();
       state.loading = false;
       render();
+      (window.requestIdleCallback ?? setTimeout)(loadAds);
     });
   });
 }

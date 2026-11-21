@@ -65,6 +65,7 @@ export const state = {
   deferredLoading: false,
   loading: false,
   syncing: false,
+  ads: null,
   pending: new Set(),
   pushSupported: pushSupported(),
   pushOn: pushEnabled(),
