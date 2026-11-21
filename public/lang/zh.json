@@ -1,5 +1,6 @@
 {
   "rakutenIchiba": "乐天市场",
+  "reloadTooOften": "刷新过于频繁，将在 {seconds} 秒后加载",
   "loading": "加载中…",
   "description": "用于管理蔚蓝档案咖啡厅触摸间隔与邀请券的计时器",
   "loginText": "使用 Google 账号登录后，记录将保存在你自己的 Google Drive 中。",

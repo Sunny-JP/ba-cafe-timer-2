@@ -1,5 +1,6 @@
 {
   "rakutenIchiba": "Rakuten Ichiba",
+  "reloadTooOften": "Too many reloads. Loading in {seconds} seconds.",
   "loading": "Loading…",
   "description": "A timer for managing Blue Archive cafe tap intervals and invitation tickets",
   "loginText": "Sign in with your Google account. Your records are saved to your own Google Drive.",

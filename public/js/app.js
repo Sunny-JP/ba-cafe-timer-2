@@ -13,6 +13,7 @@ import {
   loadAll,
   loadCalendar,
   loadDeferred,
+  reloadWaitMs,
   primeBond,
   recordTap,
   refresh,
@@ -317,6 +318,7 @@ function startApp() {
   initOutbox();
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refresh());
 
+  const loadAllowedAt = Date.now() + reloadWaitMs();
   const previousUid = store.get("uid", "");
   const previousCache = previousUid && loadBootCache(previousUid);
   let shownEarly = false;
@@ -349,12 +351,19 @@ function startApp() {
     }
     (window.requestIdleCallback ?? setTimeout)(() => showForegroundNotifications().catch(() => {}));
     flush();
-    loadAll().finally(() => {
-      flush();
-      state.loading = false;
-      render();
-      (window.requestIdleCallback ?? setTimeout)(loadAds);
-    });
+    const startLoading = () =>
+      loadAll().finally(() => {
+        flush();
+        state.loading = false;
+        render();
+        (window.requestIdleCallback ?? setTimeout)(loadAds);
+      });
+    const waitMs = loadAllowedAt - Date.now();
+    if (waitMs <= 0) return startLoading();
+    toast(t("reloadTooOften", { seconds: Math.ceil(waitMs / 1000) }));
+    state.syncing = true;
+    render();
+    setTimeout(startLoading, waitMs);
   });
 }
 

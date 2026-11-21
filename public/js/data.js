@@ -77,6 +77,19 @@ async function whileSyncing(task) {
   }
 }
 
+// 短時間に再読み込みを繰り返したら、読み込みを待たせる (30 秒以内に 11 回目から)。待つ時間 (ms) を返す
+const RELOAD_WINDOW = 30000;
+const RELOAD_LIMIT = 10;
+let loadAllowedAt = 0;
+export function reloadWaitMs(now = Date.now()) {
+  const stored = store.json("reloads");
+  const recent = [...(Array.isArray(stored) ? stored : []).filter((time) => now - time < RELOAD_WINDOW), now];
+  store.set("reloads", JSON.stringify(recent.slice(-RELOAD_LIMIT - 1)));
+  const waitMs = recent.length > RELOAD_LIMIT ? recent[recent.length - 1 - RELOAD_LIMIT] + RELOAD_WINDOW - now : 0;
+  loadAllowedAt = now + waitMs;
+  return waitMs;
+}
+
 // タイマーの分を先に表示し、絆とゲームデータは続けて裏で読む
 export async function loadAll() {
   const data = await whileSyncing(() => guarded(() => api.bootstrap(logicalMonth(Date.now()))));
@@ -88,7 +101,7 @@ export async function loadAll() {
 
 // 前面に戻ったとき (30 秒以内は省略)・別の端末の記録と食い違ったときの読み直し。失敗しても知らせない
 export async function refresh(force = false) {
-  if (!state.user || state.loading || (!force && Date.now() - loadedAt < 30000)) return;
+  if (!state.user || state.loading || Date.now() < loadAllowedAt || (!force && Date.now() - loadedAt < 30000)) return;
   try {
     const [data, bonds] = await whileSyncing(() => Promise.all([api.bootstrap(logicalMonth(Date.now())), state.bondReady ? api.relationship() : null]));
     applyBootstrap(data, { keepCalendar: true });
