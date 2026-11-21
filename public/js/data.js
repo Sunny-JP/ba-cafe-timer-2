@@ -65,9 +65,21 @@ function applyBootstrap(data, { keepCalendar = false } = {}) {
   render();
 }
 
+// 別の端末の記録を読み込んでいる間は、タップとチケットのボタンを押せなくする
+async function whileSyncing(task) {
+  state.syncing = true;
+  render();
+  try {
+    return await task();
+  } finally {
+    state.syncing = false;
+    render();
+  }
+}
+
 // タイマーの分を先に表示し、絆とゲームデータは続けて裏で読む
 export async function loadAll() {
-  const data = await guarded(() => api.bootstrap(logicalMonth(Date.now())));
+  const data = await whileSyncing(() => guarded(() => api.bootstrap(logicalMonth(Date.now()))));
   link.auto = false;
   if (!data) return;
   applyBootstrap(data);
@@ -78,7 +90,7 @@ export async function loadAll() {
 export async function refresh(force = false) {
   if (!state.user || state.loading || (!force && Date.now() - loadedAt < 30000)) return;
   try {
-    const [data, bonds] = await Promise.all([api.bootstrap(logicalMonth(Date.now())), state.bondReady ? api.relationship() : null]);
+    const [data, bonds] = await whileSyncing(() => Promise.all([api.bootstrap(logicalMonth(Date.now())), state.bondReady ? api.relationship() : null]));
     applyBootstrap(data, { keepCalendar: true });
     if (bonds) {
       state.relationship = bonds.relationship;

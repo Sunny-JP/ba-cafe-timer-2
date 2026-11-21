@@ -64,6 +64,7 @@ export const state = {
   bondReady: false,
   deferredLoading: false,
   loading: false,
+  syncing: false,
   pending: new Set(),
   pushSupported: pushSupported(),
   pushOn: pushEnabled(),

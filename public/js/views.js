@@ -54,7 +54,7 @@ export function tick(root, now = Date.now()) {
 
 const actionButton = (state, pendingKey, attributes, label) => {
   const pending = state.pending.has(pendingKey);
-  return `<button class="primary wide" ${attributes}${pending ? " data-pending" : ""}>${pending ? spinner : label}</button>`;
+  return `<button class="primary wide" ${attributes}${pending || state.syncing ? " data-pending" : ""}>${pending ? spinner : label}</button>`;
 };
 
 export function renderTimer(state, now = Date.now()) {
