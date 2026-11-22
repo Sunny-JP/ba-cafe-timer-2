@@ -361,8 +361,6 @@ function startApp() {
     const waitMs = loadAllowedAt - Date.now();
     if (waitMs <= 0) return startLoading();
     toast(t("reloadTooOften", { seconds: Math.ceil(waitMs / 1000) }));
-    state.syncing = true;
-    render();
     setTimeout(startLoading, waitMs);
   });
 }

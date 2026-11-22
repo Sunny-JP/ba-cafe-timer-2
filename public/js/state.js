@@ -64,7 +64,8 @@ export const state = {
   bondReady: false,
   deferredLoading: false,
   loading: false,
-  syncing: false,
+  // 最初の読み込みで時刻が確定するまでタップとチケットのボタンを押せなくする
+  syncing: !DEMO,
   ads: null,
   pending: new Set(),
   pushSupported: pushSupported(),
@@ -120,5 +121,6 @@ export function resetUserData() {
     bondReady: false,
     deferredLoading: false,
     selectedDay: null,
+    syncing: true,
   });
 }
