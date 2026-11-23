@@ -207,7 +207,7 @@ export const SKELETON = {
   <ul>
     <li>{{privacy.li10}}</li>
     <li>{{privacy.li11}}</li>
-    <li>{{privacy.li12}}</li>
+    <li data-ads>{{privacy.li12}}</li>
   </ul>
   
 
@@ -875,12 +875,13 @@ export const TEXT = {
   },
 };
 
-// セクション id の本文。translated=false のときは日本語で代用している
-export function docHtml(id, lang) {
+// セクション id の本文。translated=false のときは日本語で代用している。広告の配信がオフなら data-ads の要素を除く
+export function docHtml(id, lang, { ads = true } = {}) {
   const skeleton = SKELETON[id];
   if (!skeleton) return { html: "", translated: true };
   const translated = lang in (TEXT[`${id}.title`] ?? {});
   const l = translated ? lang : "ja";
-  const html = skeleton.replace(/\{\{([\w.]+)\}\}/g, (_, k) => TEXT[k]?.[l] ?? TEXT[k]?.ja ?? "");
+  const source = ads ? skeleton : skeleton.replace(/<(\w+) data-ads>[\s\S]*?<\/\1>\s*/g, "");
+  const html = source.replace(/\{\{([\w.]+)\}\}/g, (_, k) => TEXT[k]?.[l] ?? TEXT[k]?.ja ?? "");
   return { html, translated };
 }

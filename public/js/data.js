@@ -57,8 +57,10 @@ function applyBootstrap(data, { keepCalendar = false } = {}) {
     profile: withQueuedProfile(data.profile),
     lastTap: latestWithQueued(data.last_tap),
     monthTaps: taps,
+    adsEnabled: data.ads === true,
     loading: false,
   });
+  store.set("ads", state.adsEnabled ? "1" : "");
   if (!keepCalendar || state.calMonth === data.month) Object.assign(state, { calMonth: data.month, calTaps: taps });
   loadedAt = Date.now();
   saveBootCache();
@@ -90,13 +92,17 @@ export function reloadWaitMs(now = Date.now()) {
   return waitMs;
 }
 
-// タイマーの分を先に表示し、絆とゲームデータは続けて裏で読む
+// タイマーの分を先に表示し、絆とゲームデータは裏で読む (絆の通信はタイマーの分と同時に始める)。
+// 読み込み中にユーザーが替わったら結果を捨てる
 export async function loadAll() {
+  const uid = state.user?.uid;
+  const bonds = api.relationship();
+  bonds.catch(() => {});
   const data = await whileSyncing(() => guarded(() => api.bootstrap(logicalMonth(Date.now()))));
   link.auto = false;
-  if (!data) return;
+  if (!data || state.user?.uid !== uid) return;
   applyBootstrap(data);
-  loadDeferred();
+  loadDeferred(bonds);
 }
 
 // 前面に戻ったとき (30 秒以内は省略)・別の端末の記録と食い違ったときの読み直し。失敗しても知らせない
@@ -115,9 +121,9 @@ export async function refresh(force = false) {
   }
 }
 
-// 広告は一度だけ読む。読めなければ出さない
+// 広告は配信オンのときだけ一度読む。読めなければ出さない
 export async function loadAds() {
-  if (state.ads) return;
+  if (state.ads || !state.adsEnabled) return;
   try {
     const response = await fetch("/api/ads");
     if (!response.ok) throw new Error(`ads ${response.status}`);
@@ -128,9 +134,14 @@ export async function loadAds() {
   }
 }
 
-export async function loadDeferred() {
+// 先に始めた絆の通信 (prefetched) が失敗していたら、1回だけ読み直す
+export async function loadDeferred(prefetched) {
   state.deferredLoading = true;
-  const bonds = await guarded(async () => (await Promise.all([api.relationship(), ensureGameData({ onUpdate: render })]))[0]);
+  const bonds = await guarded(async () => {
+    const relationship = prefetched ? prefetched.catch(() => api.relationship()) : api.relationship();
+    prefetched = null;
+    return (await Promise.all([relationship, ensureGameData({ onUpdate: render })]))[0];
+  });
   state.deferredLoading = false;
   if (!bonds) return;
   state.relationship = bonds.relationship;

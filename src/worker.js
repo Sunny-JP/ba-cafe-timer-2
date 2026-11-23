@@ -21,6 +21,7 @@ import {
   setCatalog,
   setDevices,
   verifyIdToken,
+  warmServiceToken,
 } from './firebase.js';
 import { BOND_EXP, CATEGORY, CHARACTERS, GIFTS, GIFT_EXP, GIFT_NAME, STUDENT_NAME } from './gamedata.js';
 import {
@@ -258,12 +259,12 @@ async function handleAds(env, ctx) {
 // ---- ルート ----
 
 const routes = {
-  // タイマー画面に必要な分。is_admin は端末のログの詳しさに使う
+  // タイマー画面に必要な分。is_admin は端末のログの詳しさに、ads は広告を読みに行くかどうかに使う
   'GET /api/bootstrap': async ({ drive, env, uid, url }) => {
     const month = url.searchParams.get('month') ?? logicalMonth(Date.now());
     if (!isMonth(month)) throw new HttpError(400, 'month が不正です。');
-    const [profile, taps] = await Promise.all([readProfile(drive), readTaps(drive, month)]);
-    return { profile, month, taps, last_tap: await findLastTap(drive, month, taps), is_admin: isAdmin(env, uid) };
+    const [profile, taps, ads] = await Promise.all([readProfile(drive), readTaps(drive, month), adsEnabled(env)]);
+    return { profile, month, taps, last_tap: await findLastTap(drive, month, taps), is_admin: isAdmin(env, uid), ads };
   },
 
   'GET /api/taps': async ({ drive, url }) => {
@@ -641,6 +642,7 @@ async function handle(request, env, ctx) {
   if (!routes[routeKey]) throw new HttpError(404, 'Not Found');
 
   const bearer = /^Bearer (.+)$/.exec(request.headers.get('Authorization') ?? '')?.[1];
+  if (bearer) warmServiceToken(env);
   const token = bearer && (await verifyIdToken(bearer, env.FIREBASE_PROJECT_ID));
   if (!token) throw new HttpError(401, '認証が必要です。', 'id_token');
   const uid = token.sub;

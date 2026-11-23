@@ -48,9 +48,20 @@ export async function verifyIdToken(token, projectId) {
 // ---- サービスアカウントのアクセストークン (期限まで使い回す) ----
 
 let serviceTokenCache = { token: null, expiresAt: 0 };
+let serviceTokenRequest = null;
 
-async function serviceToken(env) {
-  if (serviceTokenCache.token && serviceTokenCache.expiresAt > Date.now() + 60000) return serviceTokenCache.token;
+function serviceToken(env) {
+  if (serviceTokenCache.token && serviceTokenCache.expiresAt > Date.now() + 60000) return Promise.resolve(serviceTokenCache.token);
+  serviceTokenRequest ??= requestServiceToken(env).finally(() => (serviceTokenRequest = null));
+  return serviceTokenRequest;
+}
+
+// ID トークンの検証と並行して取っておき、起動直後の読み込みの待ち時間を減らす
+export function warmServiceToken(env) {
+  if (env.FIREBASE_SERVICE_ACCOUNT) serviceToken(env).catch(() => {});
+}
+
+async function requestServiceToken(env) {
   const account = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
   const now = Math.floor(Date.now() / 1000);
   const scope = [

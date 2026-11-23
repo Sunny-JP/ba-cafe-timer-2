@@ -67,6 +67,8 @@ export const state = {
   // 最初の読み込みで時刻が確定するまでタップとチケットのボタンを押せなくする
   syncing: !DEMO,
   ads: null,
+  // 広告配信のオン・オフ。前回の読み込みで知った値で始める (ログイン前の文書の表示にも使う)
+  adsEnabled: store.get("ads", "") === "1",
   pending: new Set(),
   pushSupported: pushSupported(),
   pushOn: pushEnabled(),

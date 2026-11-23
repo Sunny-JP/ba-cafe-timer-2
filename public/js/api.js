@@ -66,9 +66,32 @@ if (typeof window !== "undefined") {
 
 export const app = initializeApp(firebaseConfig);
 const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+// 起動直後は Firebase の初期化 (ユーザー情報の再確認の通信) を待たず、前回保存した期限内の ID トークンで読み込みを始める
+const ID_TOKEN_KEY = "ct.idToken";
+const ID_TOKEN_MARGIN = 5 * 60 * 1000;
+let authResolved = false;
+
+function savedIdToken() {
+  try {
+    const token = localStorage.getItem(ID_TOKEN_KEY);
+    const { exp } = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return exp * 1000 > Date.now() + ID_TOKEN_MARGIN ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveIdToken(token) {
+  try {
+    if (token) localStorage.setItem(ID_TOKEN_KEY, token);
+    else localStorage.removeItem(ID_TOKEN_KEY);
+  } catch {}
+}
+
 const authReady = new Promise((resolve) => {
-  const unsubscribe = onAuthStateChanged(auth, () => {
-    unsubscribe();
+  onAuthStateChanged(auth, (user) => {
+    if (!user) saveIdToken(null);
+    authResolved = true;
     resolve();
   });
 });
@@ -77,12 +100,19 @@ export class ReauthRequired extends Error {}
 
 export const onUser = (callback) => onAuthStateChanged(auth, callback);
 export const login = async () => (await signInWithPopup(auth, new GoogleAuthProvider(), browserPopupRedirectResolver)).user;
-export const logout = () => signOut(auth);
+export const logout = () => {
+  saveIdToken(null);
+  return signOut(auth);
+};
 
 export async function getIdToken() {
+  const saved = !authResolved && savedIdToken();
+  if (saved) return saved;
   await authReady;
   if (!auth.currentUser) throw new ReauthRequired("not signed in");
-  return auth.currentUser.getIdToken();
+  const token = await auth.currentUser.getIdToken();
+  saveIdToken(token);
+  return token;
 }
 
 // Drive 連携は認可コードだけを受け取ってサーバーへ渡す (トークンはブラウザに残さない)
@@ -149,7 +179,7 @@ function request(method, path, body) {
 
 let requestCount = 0;
 // 送信を始めたあとにアプリを閉じても届くよう、書き込みは keepalive (本文 60KB 未満) で送る。
-// Drive のトークン切れ (401 drive_token) は1回だけ再試行する
+// Drive のトークン切れ (401 drive_token)・保存していた ID トークンが通らないとき (401 id_token) は1回だけ再試行する
 async function send(method, path, body, firstTry = true) {
   const tag = `#${++requestCount} ${method} ${path}`;
   const startedAt = performance.now();
@@ -174,6 +204,11 @@ async function send(method, path, body, firstTry = true) {
     data = JSON.parse(text);
   } catch {}
   if (response.ok) return data;
+  if (response.status === 401 && data.code === "id_token" && firstTry) {
+    saveIdToken(null);
+    await authReady;
+    return send(method, path, body, false);
+  }
   if (response.status === 401 && data.code === "drive_token") {
     if (firstTry) return send(method, path, body, false);
     throw new ReauthRequired(data.error);

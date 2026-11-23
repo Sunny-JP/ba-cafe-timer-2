@@ -258,7 +258,7 @@ export function toggleDropdown(button) {
 // ---- 文書 (docs.js は開いたときに読み込み、変更履歴の場所には updates.js の内容を差し込む) ----
 
 export async function loadDoc(id) {
-  const { html, translated } = (await import("./docs.js")).docHtml(id, getLang());
+  const { html, translated } = (await import("./docs.js")).docHtml(id, getLang(), { ads: state.adsEnabled });
   const body = html.replace(/<ul class="log" data-update-log(?:="")?><\/ul>/, () => renderLogList());
   return (translated ? "" : `<p class="note info">${t("docFallback")}</p>`) + body;
 }

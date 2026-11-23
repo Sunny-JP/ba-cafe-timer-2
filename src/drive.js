@@ -41,10 +41,41 @@ const postForm = (url, params) => fetch(url, { method: 'POST', headers: { 'Conte
 const requestToken = (env, params) => postForm(TOKEN_URL, { client_id: GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, ...params });
 const revoke = (token) => postForm(REVOKE_URL, { token }).catch(() => {});
 
-// 同じ isolate 内では期限までアクセストークンを使い回す
+// アクセストークンは期限まで使い回す。同じ isolate 内はメモリ、別の isolate とは暗号化して Cache API で共有する。
+// 同じユーザーの取得が重なったら1本にまとめる
 const accessTokens = new Map();
-const rememberAccessToken = (uid, result) => accessTokens.set(uid, { token: result.access_token, expiresAt: Date.now() + (result.expires_in - 120) * 1000 });
-export const forgetAccessToken = (uid) => accessTokens.delete(uid);
+const accessTokenRequests = new Map();
+const TOKEN_CACHE_URL = 'https://cafetimer2.rabbit1.cc/__cache/drive-token/';
+const tokenCacheKey = (uid) => `${TOKEN_CACHE_URL}${encodeURIComponent(uid)}`;
+const edgeCache = () => (typeof caches === 'undefined' ? null : caches.default);
+
+async function rememberAccessToken(env, uid, result) {
+  const expiresAt = Date.now() + (result.expires_in - 120) * 1000;
+  accessTokens.set(uid, { token: result.access_token, expiresAt });
+  try {
+    const body = JSON.stringify({ encrypted: await encrypt(env, uid, result.access_token), expiresAt });
+    await edgeCache()?.put(tokenCacheKey(uid), new Response(body, { headers: { 'Cache-Control': `max-age=${Math.floor((expiresAt - Date.now()) / 1000)}` } }));
+  } catch {}
+}
+
+async function sharedAccessToken(env, uid) {
+  try {
+    const response = await edgeCache()?.match(tokenCacheKey(uid));
+    if (!response) return null;
+    const { encrypted, expiresAt } = await response.json();
+    if (!(expiresAt > Date.now())) return null;
+    const token = await decrypt(env, uid, encrypted);
+    accessTokens.set(uid, { token, expiresAt });
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+export function forgetAccessToken(uid) {
+  accessTokens.delete(uid);
+  edgeCache()?.delete(tokenCacheKey(uid)).catch(() => {});
+}
 
 // ブラウザで得た認可コードをリフレッシュトークンに交換して保存する。成功すれば true
 export async function linkDrive(env, uid, code) {
@@ -58,15 +89,23 @@ export async function linkDrive(env, uid, code) {
     return false;
   }
   await setDriveAuth(env, uid, await encrypt(env, uid, result.refresh_token));
-  rememberAccessToken(uid, result);
+  await rememberAccessToken(env, uid, result);
   return true;
 }
 
 // 連携済みならアクセストークン、未連携・失効なら null。取り消し・失効 (invalid_grant) のときだけ保存分を消す
-export async function getAccessToken(env, uid) {
+export function getAccessToken(env, uid) {
   const cached = accessTokens.get(uid);
-  if (cached && cached.expiresAt > Date.now()) return cached.token;
-  if (!isConfigured(env)) return null;
+  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.token);
+  if (!isConfigured(env)) return Promise.resolve(null);
+  if (!accessTokenRequests.has(uid)) {
+    const request = (async () => (await sharedAccessToken(env, uid)) ?? refreshAccessToken(env, uid))();
+    accessTokenRequests.set(uid, request.finally(() => accessTokenRequests.delete(uid)));
+  }
+  return accessTokenRequests.get(uid);
+}
+
+async function refreshAccessToken(env, uid) {
   const encrypted = await getDriveAuth(env, uid);
   if (!encrypted) return null;
   const refreshToken = await decrypt(env, uid, encrypted).catch(() => null);
@@ -77,13 +116,13 @@ export async function getAccessToken(env, uid) {
     return null;
   }
   const result = await response.json();
-  rememberAccessToken(uid, result);
+  await rememberAccessToken(env, uid, result);
   return result.access_token;
 }
 
 // アカウント削除: Google 側でも取り消し、保存分を消す
 export async function unlinkDrive(env, uid) {
-  accessTokens.delete(uid);
+  forgetAccessToken(uid);
   if (!isConfigured(env)) return;
   const encrypted = await getDriveAuth(env, uid).catch(() => null);
   if (encrypted) await revoke(await decrypt(env, uid, encrypted).catch(() => ''));
@@ -99,9 +138,11 @@ export class DriveError extends Error {
   }
 }
 
-// ファイル名 → ID の一覧は同じ isolate 内で 10 分使い回し、見つからないとき・404 のときは取り直す
+// ファイル名 → ID の一覧は同じ isolate 内で 10 分使い回し、見つからないとき・404 のときは取り直す。
+// 起動直後に同時に届いた読み込みの一覧の取得は1本にまとめる
 const INDEX_TTL = 10 * 60 * 1000;
 const fileIndexCache = new Map();
+const fileIndexRequests = new Map();
 
 export class Drive {
   constructor(token, uid) {
@@ -120,13 +161,24 @@ export class Drive {
 
   async index(refresh = false) {
     if (!this.ids || refresh) {
-      const query = new URLSearchParams({ spaces: 'appDataFolder', fields: 'files(id,name)', pageSize: '1000' });
-      const { files } = await (await this.fetch(`${API}/files?${query}`)).json();
-      this.ids = new Map(files.map((file) => [file.name, file.id]));
+      const sharable = !refresh && this.uid;
+      let request = sharable && fileIndexRequests.get(this.uid);
+      if (!request) {
+        request = this.listFiles();
+        if (sharable) fileIndexRequests.set(this.uid, (request = request.finally(() => fileIndexRequests.delete(this.uid))));
+      }
+      this.ids = await request;
       this.fresh = true;
-      if (this.uid) fileIndexCache.set(this.uid, { ids: this.ids, expiresAt: Date.now() + INDEX_TTL });
     }
     return this.ids;
+  }
+
+  async listFiles() {
+    const query = new URLSearchParams({ spaces: 'appDataFolder', fields: 'files(id,name)', pageSize: '1000' });
+    const { files } = await (await this.fetch(`${API}/files?${query}`)).json();
+    const ids = new Map(files.map((file) => [file.name, file.id]));
+    if (this.uid) fileIndexCache.set(this.uid, { ids, expiresAt: Date.now() + INDEX_TTL });
+    return ids;
   }
 
   async idOf(name) {

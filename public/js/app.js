@@ -313,12 +313,26 @@ function onSignedOut() {
   preloadGsi();
 }
 
-// 前回のユーザーの保存データがあれば、認証の確定を待たずに先に描画する
+// 前回のユーザーの保存データがあれば、認証の確定を待たずに先に描画して読み込みも始める
 function startApp() {
   initOutbox();
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refresh());
 
   const loadAllowedAt = Date.now() + reloadWaitMs();
+  const loadNow = () =>
+    loadAll().finally(() => {
+      flush();
+      state.loading = false;
+      render();
+      (window.requestIdleCallback ?? setTimeout)(loadAds);
+    });
+  const startLoading = () => {
+    const waitMs = loadAllowedAt - Date.now();
+    if (waitMs <= 0) return loadNow();
+    toast(t("reloadTooOften", { seconds: Math.ceil(waitMs / 1000) }));
+    setTimeout(loadNow, waitMs);
+  };
+
   const previousUid = store.get("uid", "");
   const previousCache = previousUid && loadBootCache(previousUid);
   let shownEarly = false;
@@ -329,20 +343,23 @@ function startApp() {
     shownEarly = true;
     show("app");
     render();
+    startLoading();
   }
 
   onUser((user) => {
     log.info("auth", `user=${user ? "signed in" : "none"} shownEarly=${shownEarly}`);
-    if (shownEarly && user?.uid !== previousUid) {
+    // 先に描画して読み込みを始めたのと同じユーザーなら、そのまま続ける (最初の1回だけ)
+    const alreadyLoading = shownEarly && user?.uid === previousUid;
+    if (shownEarly && !alreadyLoading) {
       resetUserData();
       clearCalendarCache();
-      shownEarly = false;
     }
+    shownEarly = false;
     state.user = user;
     if (!user) return onSignedOut();
     store.set("uid", user.uid);
     show("app");
-    if (!shownEarly) {
+    if (!alreadyLoading) {
       const cache = loadBootCache(user.uid);
       if (cache) applyBoot(cache);
       primeBond(user.uid);
@@ -351,17 +368,7 @@ function startApp() {
     }
     (window.requestIdleCallback ?? setTimeout)(() => showForegroundNotifications().catch(() => {}));
     flush();
-    const startLoading = () =>
-      loadAll().finally(() => {
-        flush();
-        state.loading = false;
-        render();
-        (window.requestIdleCallback ?? setTimeout)(loadAds);
-      });
-    const waitMs = loadAllowedAt - Date.now();
-    if (waitMs <= 0) return startLoading();
-    toast(t("reloadTooOften", { seconds: Math.ceil(waitMs / 1000) }));
-    setTimeout(startLoading, waitMs);
+    if (!alreadyLoading) startLoading();
   });
 }
 

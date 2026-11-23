@@ -52,9 +52,10 @@ export function tick(root, now = Date.now()) {
   for (const button of root.querySelectorAll("[data-enable-at]")) button.disabled = "pending" in button.dataset || Number(button.dataset.enableAt) > now;
 }
 
+// 処理中・別の端末の記録を読み込み中は、押せなくしてスピナーを出す
 const actionButton = (state, pendingKey, attributes, label) => {
-  const pending = state.pending.has(pendingKey);
-  return `<button class="primary wide" ${attributes}${pending || state.syncing ? " data-pending" : ""}>${pending ? spinner : label}</button>`;
+  const waiting = state.pending.has(pendingKey) || state.syncing;
+  return `<button class="primary wide" ${attributes}${waiting ? " data-pending" : ""}>${waiting ? spinner : label}</button>`;
 };
 
 export function renderTimer(state, now = Date.now()) {
