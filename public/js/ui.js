@@ -1,4 +1,3 @@
-// 画面の描画と DOM 操作 (描画・ダイアログ・トースト・テーマ・ドロップダウン・文書の読み込み)
 import { log, preloadGsi } from "./api.js";
 import { drawChart } from "./chart.js";
 import { getLang, t } from "./i18n.js";
@@ -8,12 +7,9 @@ import { calendarBody, icon, noticeBanner, renderAds, renderBond, renderCalendar
 export const $ = (selector) => document.querySelector(selector);
 export const view = $("#view");
 
-// ---- 描画 ----
-
 export const wide = matchMedia("(min-width: 900px) and (orientation: landscape)");
 const TAB_VIEWS = { timer: renderTimer, calendar: renderCalendar, bond: renderBond, settings: renderSettings, doc: renderDoc };
 
-// 横長の画面ではタイマーとカレンダーを並べる (カレンダーのタブはタイマーに含める)
 const currentTab = () => (wide.matches && state.tab === "calendar" ? "timer" : state.tab);
 
 function tabHtml(tab) {
@@ -44,7 +40,6 @@ export function render(animate = false) {
   }
 }
 
-// 広告は #ads に一度だけ描き、タブを切り替えても描き直さない。2 列の画面では左の列の下へ移す
 export function showAds() {
   const ads = $("#ads");
   ads.innerHTML = renderAds(state);
@@ -58,7 +53,6 @@ function placeAds() {
   if (ads && leftColumn) leftColumn.append(ads);
 }
 
-// カレンダー部分 (#cal-area) だけを描き直す。表示されていなければ何もしない
 export function renderCalendarArea() {
   const area = document.getElementById("cal-area");
   if (!area) return;
@@ -79,8 +73,7 @@ export function toTimerScreen() {
   scrollTo(0, 0);
 }
 
-// 贈物の一覧に続きがあるとき、端のぼかしと矢印を出す
-export function updateGiftNav() {
+function updateGiftNav() {
   for (const wrapper of document.querySelectorAll(".gifts-wrap")) {
     const list = wrapper.querySelector(".gifts");
     const hasLeft = list.scrollLeft > 1;
@@ -91,7 +84,6 @@ export function updateGiftNav() {
   }
 }
 
-// デモでは使えない操作に印を付け、ファイル選択も開かないようにする
 function lockDemo(root) {
   if (!DEMO) return;
   for (const element of root.querySelectorAll("[data-act]")) {
@@ -109,8 +101,6 @@ export function initRender() {
   wide.addEventListener("change", () => render(true));
 }
 
-// ---- 共通部品 ----
-
 let toastTimer = 0;
 export function toast(message) {
   const element = $("#toast");
@@ -121,7 +111,6 @@ export function toast(message) {
   toastTimer = setTimeout(() => (element.hidden = true), 3500);
 }
 
-// 処理中の表示 (モーダル。Esc でも閉じない)
 export const busy = {
   show(message, step = 0) {
     if (!$("#busy").open) $("#busy").showModal();
@@ -156,7 +145,6 @@ export function confirmDialog(message, okLabel, danger = false) {
   });
 }
 
-// ダイアログの外 (背景) をクリックしたときだけ閉じる
 export function closeOnOutsideClick(dialog) {
   dialog.addEventListener("click", (event) => {
     const rect = dialog.getBoundingClientRect();
@@ -173,7 +161,6 @@ export function downloadBlob(blob, fileName) {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
-// ログイン前 / 読み込み中 / アプリ本体のどれか1つだけを出す
 export function show(screen) {
   for (const id of ["loading", "login", "app"]) $(`#${id}`).hidden = id !== screen;
 }
@@ -182,8 +169,6 @@ export function showReauth() {
   $("#reauth").hidden = false;
   preloadGsi();
 }
-
-// ---- テーマ ----
 
 export const dark = matchMedia("(prefers-color-scheme: dark)");
 export const isDark = () => (state.mode === "auto" ? dark.matches : state.mode === "dark");
@@ -209,7 +194,6 @@ export function setAccent(color) {
   applyTheme();
 }
 
-// CSS 変数の色を rgb() で得る (canvas 用。light-dark() の解決後の色)
 export function cssColor(variable) {
   const probe = document.createElement("div");
   probe.style.color = `var(${variable})`;
@@ -223,8 +207,6 @@ export function cssColor(variable) {
   return `rgb(${red}, ${green}, ${blue})`;
 }
 
-// ---- ドロップダウン ----
-
 export function closeDropdowns() {
   for (const list of document.querySelectorAll(".dd-list.open")) {
     list.classList.remove("open");
@@ -232,7 +214,6 @@ export function closeDropdowns() {
   }
 }
 
-// 検索ではひらがなをカタカナにそろえ、大文字小文字を区別しない
 const normalize = (text) => text.toLowerCase().replace(/[ぁ-ゖ]/g, (char) => String.fromCharCode(char.charCodeAt(0) + 0x60));
 
 export function filterDropdown(input) {
@@ -254,8 +235,6 @@ export function toggleDropdown(button) {
   }
   list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
 }
-
-// ---- 文書 (docs.js は開いたときに読み込み、変更履歴の場所には updates.js の内容を差し込む) ----
 
 export async function loadDoc(id) {
   const { html, translated } = (await import("./docs.js")).docHtml(id, getLang(), { ads: state.adsEnabled });

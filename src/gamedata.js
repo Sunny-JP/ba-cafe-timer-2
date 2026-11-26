@@ -1,5 +1,3 @@
-// ゲームデータ本体 (絆EXP表・贈物・キャラ・各言語の名前)。ログイン後に GET /api/gamedata で配信する
-
 export const BOND_EXP = {
   1: 0, 2: 15, 3: 45, 4: 75, 5: 110, 6: 145, 7: 180, 8: 220, 9: 260, 10: 300,
   11: 360, 12: 450, 13: 555, 14: 675, 15: 815, 16: 975, 17: 1155, 18: 1360, 19: 1590, 20: 1845,
@@ -13,7 +11,7 @@ export const BOND_EXP = {
   91: 180420, 92: 186510, 93: 192735, 94: 199095, 95: 205595, 96: 212235, 97: 219015, 98: 225940, 99: 233010, 100: 240225,
 };
 
-// 好感度の補正倍率 (n: 通常 / s: 高級、b: 中 / a: 大 / s: 特大)
+// n: 通常 / s: 高級、b: 中 / a: 大 / s: 特大
 export const GIFT_EXP = { nb: 1, na: 1.5, ns: 2, sa: 1.5, ss: 2 };
 
 export const GIFTS = [
@@ -348,8 +346,6 @@ export const CHARACTERS = [
   { key: "saten_ruiko", name: "佐天涙子", gifts: [] },
 ];
 
-
-// 贈物のカテゴリ (花言葉)名。データ側は日本語のまま持ち、表示のときだけ訳す
 export const CATEGORY = {
   ja: {},
   en: { アサガオ: 'Morning Glory', キンセンカ: 'Calendula', スイセン: 'Narcissus', タンポポ: 'Dandelion', チューリップ: 'Tulip', ツツジ: 'Azalea', モクレン: 'Magnolia', ユリ: 'Lily', 桔梗: 'Bellflower', 桜: 'Cherry Blossom', 煌めき: 'Radiant', 牡丹: 'Peony', 百日紅: 'Crape Myrtle', 翡翠花: 'Jade Flower', 薔薇: 'Rose' },
@@ -412,7 +408,7 @@ export const GIFT_NAME = {
   "きらめきの花束": {"en": "Shiny Bouquet", "ko": "반짝이는 꽃다발", "zh": "闪烁的花束"},
 };
 
-// 生徒名。キーは日本語名。訳は Schale DB (schaledb.com) の各言語表記に合わせている
+// 訳は Schale DB (schaledb.com) の表記に合わせる
 export const STUDENT_NAME = {
   "アイリ": {"en": "Airi", "ko": "아이리", "zh": "爱莉"},
   "アイリ (バンド)": {"en": "Airi (Band)", "ko": "아이리 (밴드)", "zh": "爱莉 (乐队)"},

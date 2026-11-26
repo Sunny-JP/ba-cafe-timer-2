@@ -1,4 +1,3 @@
-// エントリーポイント: 起動・ログイン状態の監視・画面のイベント (ボタン・フォーム・タブ・メニュー)
 import { api, log, login, logout, onUser, preloadGsi, requestDriveCode } from "./api.js";
 import { saveCalendarImage } from "./chart.js";
 import {
@@ -51,8 +50,6 @@ import {
 } from "./ui.js";
 import { icon, langPicker, tick } from "./views.js";
 
-// ---- ボタン (data-act) ----
-
 async function changeLanguage(code) {
   try {
     await setLang(code, !DEMO);
@@ -67,7 +64,6 @@ async function changeLanguage(code) {
   if (state.user) render();
 }
 
-// ドロップダウン (data-field) で項目を選んだとき
 const PICKERS = {
   char: selectBondChar,
   "cal-ym": (month) => !DEMO && month !== state.calMonth && loadCalendar(month),
@@ -148,7 +144,6 @@ const actions = {
   "delete-account": deleteAccount,
 };
 
-// 押した結果で描き直されたボタンも、沈んだ状態から戻すアニメーションをかける
 function reboundButton(button) {
   if (button.isConnected) return;
   const { act, n: ticketNumber, day } = button.dataset;
@@ -180,8 +175,6 @@ function onNavClick(event) {
   if (!state.bondReady && !state.deferredLoading) loadDeferred();
 }
 
-// ---- フォーム (data-form) ----
-
 function onInput(event) {
   const input = event.target;
   if (input.matches(".dd-q")) return filterDropdown(input);
@@ -193,15 +186,10 @@ function onInput(event) {
 
 async function onChange(event) {
   const input = event.target;
-  const kind = input.dataset.form;
-  if (!kind || (DEMO && kind !== "bond-char")) return;
-  if (kind === "bond-char") selectBondChar(input.value);
-  if (kind === "tz") saveProfile({ timezone: input.value || null });
-  if (kind === "import" && input.files[0]) {
-    const file = input.files[0];
-    input.value = "";
-    await importFile(file);
-  }
+  if (DEMO || input.dataset.form !== "import" || !input.files[0]) return;
+  const file = input.files[0];
+  input.value = "";
+  await importFile(file);
 }
 
 function initEvents() {
@@ -213,7 +201,6 @@ function initEvents() {
     if (!DEMO && event.target.dataset.form === "bond") submitBond(event.target);
   });
 
-  // インポートの <label> もキーボード (Enter / Space) で開けるようにする
   document.addEventListener("keydown", (event) => {
     const label = event.target instanceof Element && event.target.matches("label.menu-item") ? event.target : null;
     if (!label || (event.key !== "Enter" && event.key !== " ")) return;
@@ -221,14 +208,11 @@ function initEvents() {
     label.querySelector("input")?.click();
   });
 
-  // 読み込めなかった画像 (生徒アイコン・アバター) は消す
   document.addEventListener("error", (event) => event.target.matches?.("img.dd-icon, img.bond-icon, .avatar img") && event.target.remove(), true);
 
-  // 入力欄以外ではコピー・選択・ドラッグを止める
   const isTextField = (event) => event.target instanceof Element && event.target.closest("input, textarea");
   for (const type of ["copy", "cut", "selectstart", "dragstart"]) document.addEventListener(type, (event) => isTextField(event) || event.preventDefault());
 
-  // 贈物と広告の一覧はマウスホイールの縦回転でも横にスクロールする
   document.addEventListener(
     "wheel",
     (event) => {
@@ -253,8 +237,6 @@ function initEvents() {
   for (const button of document.querySelectorAll("nav button")) button.innerHTML = icon(NAV_ICONS[button.dataset.tab], 28);
   document.querySelector("nav").addEventListener("click", onNavClick);
 }
-
-// ---- ログイン前の画面 ----
 
 let loginDocId = "about";
 const renderLoginLang = () => ($("#login-lang").innerHTML = langPicker(getLang()));
@@ -284,8 +266,6 @@ function initLoginScreen() {
   });
 }
 
-// ---- 起動 ----
-
 async function startDemo() {
   const { applyDemo, demoLang, demoMenu } = __DEMO_BUILD__ ? await import("./demo.js") : {};
   $("#home-btn").addEventListener("click", () => location.assign("/"));
@@ -301,7 +281,6 @@ async function startDemo() {
   }
 }
 
-// 前のユーザーのデータを端末に残さない
 function onSignedOut() {
   clearGameDataCache();
   clearUserCaches();
@@ -313,7 +292,6 @@ function onSignedOut() {
   preloadGsi();
 }
 
-// 前回のユーザーの保存データがあれば、認証の確定を待たずに先に描画して読み込みも始める
 function startApp() {
   initOutbox();
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && refresh());
@@ -348,7 +326,6 @@ function startApp() {
 
   onUser((user) => {
     log.info("auth", `user=${user ? "signed in" : "none"} shownEarly=${shownEarly}`);
-    // 先に描画して読み込みを始めたのと同じユーザーなら、そのまま続ける (最初の1回だけ)
     const alreadyLoading = shownEarly && user?.uid === previousUid;
     if (shownEarly && !alreadyLoading) {
       resetUserData();
@@ -383,6 +360,6 @@ setInterval(() => tick(view), 1000);
 if (DEMO) await startDemo();
 else {
   startApp();
-  // 通知を使わない場合も PWA としてインストールできるように登録する
+  // PWA としてインストールできるよう、通知を使わなくても登録する
   if ("serviceWorker" in navigator && !pushEnabled()) registerWorker().catch(() => {});
 }

@@ -17,8 +17,7 @@ run_worker_first = ["/api/*"]
 [triggers]
 crons = ["* * * * *"]
 
-# ユーザーごとに Drive への書き込みを1本ずつ処理する (src/worker.js の UserStore)。
-# 無料プランは SQLite 版のみ使える (何も保存しないが、クラスの登録として必要)
+# 無料プランで使える Durable Object は SQLite 版だけ
 [[durable_objects.bindings]]
 name = "USER_STORE"
 class_name = "UserStore"
@@ -27,7 +26,6 @@ class_name = "UserStore"
 tag = "v1"
 new_sqlite_classes = ["UserStore"]
 
-# 書き込み API の回数制限 (uid ごと、60 秒あたり)。src/worker.js の handle()
 [[ratelimits]]
 name = "WRITE_LIMIT"
 namespace_id = "1001"

@@ -1,4 +1,4 @@
-// 描画前に保存済みのテーマを反映し (ちらつき防止)、Web フォントを表示をブロックせずに読み込む。<head> で同期読み込みする
+// ちらつかないよう <head> で同期読み込みする
 try {
   const root = document.documentElement;
   const mode = localStorage.getItem("ct.mode");

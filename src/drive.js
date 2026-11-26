@@ -1,5 +1,4 @@
-// Google Drive: リフレッシュトークンの保管・アクセストークンの発行と、appDataFolder の読み書き。
-// リフレッシュトークンは AES-GCM (鍵 env.TOKEN_ENC_KEY、uid を認証データに束縛) で暗号化して Firestore に置く
+// リフレッシュトークンは uid を束縛して暗号化し、Firestore に置く
 import { DRIVE_SCOPE, GOOGLE_CLIENT_ID } from '../public/js/config.js';
 import { deleteDriveAuth, getDriveAuth, setDriveAuth } from './firebase.js';
 
@@ -7,7 +6,6 @@ const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
-// これ以外のスコープが付いた連携は受け付けない
 const ALLOWED_SCOPES = new Set([
   DRIVE_SCOPE,
   'openid',
@@ -16,8 +14,6 @@ const ALLOWED_SCOPES = new Set([
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
 ]);
-
-// ---- トークン ----
 
 const base64ToBytes = (text) => Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
 const bytesToBase64 = (buffer) => btoa(String.fromCharCode(...new Uint8Array(buffer)));
@@ -41,8 +37,6 @@ const postForm = (url, params) => fetch(url, { method: 'POST', headers: { 'Conte
 const requestToken = (env, params) => postForm(TOKEN_URL, { client_id: GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, ...params });
 const revoke = (token) => postForm(REVOKE_URL, { token }).catch(() => {});
 
-// アクセストークンは期限まで使い回す。同じ isolate 内はメモリ、別の isolate とは暗号化して Cache API で共有する。
-// 同じユーザーの取得が重なったら1本にまとめる
 const accessTokens = new Map();
 const accessTokenRequests = new Map();
 const TOKEN_CACHE_URL = 'https://cafetimer2.rabbit1.cc/__cache/drive-token/';
@@ -77,7 +71,6 @@ export function forgetAccessToken(uid) {
   edgeCache()?.delete(tokenCacheKey(uid)).catch(() => {});
 }
 
-// ブラウザで得た認可コードをリフレッシュトークンに交換して保存する。成功すれば true
 export async function linkDrive(env, uid, code) {
   if (!isConfigured(env) || typeof code !== 'string' || !code) return false;
   const response = await requestToken(env, { grant_type: 'authorization_code', code, redirect_uri: 'postmessage' });
@@ -93,7 +86,6 @@ export async function linkDrive(env, uid, code) {
   return true;
 }
 
-// 連携済みならアクセストークン、未連携・失効なら null。取り消し・失効 (invalid_grant) のときだけ保存分を消す
 export function getAccessToken(env, uid) {
   const cached = accessTokens.get(uid);
   if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.token);
@@ -120,7 +112,6 @@ async function refreshAccessToken(env, uid) {
   return result.access_token;
 }
 
-// アカウント削除: Google 側でも取り消し、保存分を消す
 export async function unlinkDrive(env, uid) {
   forgetAccessToken(uid);
   if (!isConfigured(env)) return;
@@ -129,8 +120,6 @@ export async function unlinkDrive(env, uid) {
   await deleteDriveAuth(env, uid);
 }
 
-// ---- appDataFolder ----
-
 export class DriveError extends Error {
   constructor(status, message) {
     super(message);
@@ -138,8 +127,6 @@ export class DriveError extends Error {
   }
 }
 
-// ファイル名 → ID の一覧は同じ isolate 内で 10 分使い回し、見つからないとき・404 のときは取り直す。
-// 起動直後に同時に届いた読み込みの一覧の取得は1本にまとめる
 const INDEX_TTL = 10 * 60 * 1000;
 const fileIndexCache = new Map();
 const fileIndexRequests = new Map();

@@ -35,7 +35,7 @@ test('通知予約: 3時間後が境界を跨ぐ場合は予約しない', () =>
   const t = jst('2026-05-10T10:00:00.789');
   assert.equal(shouldScheduleNotification(t), jst('2026-05-10T13:00:00'));
   assert.equal(shouldScheduleNotification(jst('2026-05-10T13:00:01')), null);
-  assert.equal(shouldScheduleNotification(jst('2026-05-10T13:00:00')), null); // ちょうど 16:00 も境界扱い
+  assert.equal(shouldScheduleNotification(jst('2026-05-10T13:00:00')), null);
 });
 
 test('月の範囲と前月', () => {

@@ -1,8 +1,6 @@
-// 文書 (About・使い方ガイド・FAQ・規約など)。開いたときに初めて読み込む。
-// SKELETON は言語共通の構造で、{{キー}} に TEXT の訳 (HTML) が入る。訳のない言語は日本語で代用する。
-// キー: <セクション>.<種類><連番> (title=h2 / h=h3 / p / li / q=質問 / a=回答)
+// キー: <セクション>.<種類><連番> (h=h3 / q=質問 / a=回答)。訳のない言語は日本語を出す
 
-export const SKELETON = {
+const SKELETON = {
   about: `
 
 
@@ -245,7 +243,7 @@ export const SKELETON = {
 `,
 };
 
-export const TEXT = {
+const TEXT = {
   "about.title": {
     ja: `About`,
     en: `About`,
@@ -875,7 +873,6 @@ export const TEXT = {
   },
 };
 
-// セクション id の本文。translated=false のときは日本語で代用している。広告の配信がオフなら data-ads の要素を除く
 export function docHtml(id, lang, { ads = true } = {}) {
   const skeleton = SKELETON[id];
   if (!skeleton) return { html: "", translated: true };

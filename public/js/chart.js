@@ -1,13 +1,9 @@
-// canvas に描くもの: 絆ランクの推移グラフ (Chart.js) と、カレンダーの画像保存
 import { BOND_EXP } from "./gamedata.js";
 import { t } from "./i18n.js";
 import { state } from "./state.js";
+import { daysInMonth, leadingBlanks, padTwo } from "./time.js";
 import { $, cssColor, downloadBlob } from "./ui.js";
 import { WEEKDAYS, bondRecords, dayCounts, heatLevel } from "./views.js";
-
-// ---- 絆ランクの推移 ----
-// 縦軸は累計 EXP。最後の記録から平均ペースで RANK 100 まで延ばした予測を点線で重ねる。
-// Chart.js は初めて描くときに読み込む
 
 let Chart = null;
 let chartLoading = null;
@@ -24,7 +20,6 @@ function loadChartLibrary() {
   return chartLoading;
 }
 
-// 横方向で最も近い実際の記録を拾う (0 番の描画用の線は除き、同じ位置の点はすべて返す)
 function nearestRecords(chartInstance, event) {
   let bestDistance = Infinity;
   let items = [];
@@ -44,11 +39,10 @@ function nearestRecords(chartInstance, event) {
 
 document.fonts?.ready.then(() => drawChart());
 
-const padTwo = (number) => String(number).padStart(2, "0");
 const formatYearMonth = (time) => `${new Date(time).getUTCFullYear()}/${padTwo(new Date(time).getUTCMonth() + 1)}`;
 const formatDate = (time) => `${formatYearMonth(time)}/${padTwo(new Date(time).getUTCDate())}`;
 
-// 同じ日に複数の記録がある日は上下に補助点を足し、曲線が角で横に膨らまないようにする
+// 同じ日に複数の記録があると曲線が横に膨らむので、補助点を足す
 function withHelperPoints(points) {
   const line = [];
   const offset = (from, to) => Math.min(BOND_EXP[100] * 0.02, Math.abs(from - to) / 2);
@@ -63,7 +57,6 @@ function withHelperPoints(points) {
   return line;
 }
 
-// 現在のランクより上の 5 の倍数ごとに予測点を置く
 function forecastPoints(first, last) {
   const expPerMs = last.x > first.x ? (last.y - first.y) / (last.x - first.x) : 0;
   if (expPerMs <= 0 || last.y >= BOND_EXP[100]) return [];
@@ -74,7 +67,6 @@ function forecastPoints(first, last) {
   return points;
 }
 
-// 月初に目盛りを置き、多ければ間引く
 function monthTicks(scale) {
   const ticks = [];
   const date = new Date(scale.min);
@@ -112,7 +104,6 @@ export function drawChart() {
     gradient.addColorStop(1, "transparent");
     return gradient;
   };
-  // 同じ日の記録をランクの高い順に 1 行ずつ
   const tooltipLines = (item) => {
     const sameDay = new Map();
     for (const point of [...records, ...forecast]) if (point.x === item.raw.x) sameDay.set(point.rank, point);
@@ -177,21 +168,19 @@ export function drawChart() {
   });
 }
 
-// ---- カレンダーの画像 (1500x1500 の PNG。アプリ内と同じ見た目) ----
-
 export function saveCalendarImage() {
   const month = state.calMonth;
   const [year, monthNumber] = month.split("-").map(Number);
   const counts = dayCounts(state.calTaps);
-  const leadingBlanks = (new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay() + 6) % 7;
-  const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const blanks = leadingBlanks(month);
+  const days = daysInMonth(month);
   const CELL = 120;
   const PADDING = 24;
   const TOP = 120;
   const SIZE = 1500;
   const FONT = '"Noto Sans", "Noto Sans JP", sans-serif';
   const width = CELL * 7 + PADDING * 2;
-  const height = TOP + CELL * Math.ceil((leadingBlanks + days) / 7) + 64;
+  const height = TOP + CELL * Math.ceil((blanks + days) / 7) + 64;
 
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = SIZE;
@@ -210,11 +199,10 @@ export function saveCalendarImage() {
   context.fillStyle = cssColor("--on-variant");
   WEEKDAYS.forEach((weekday, index) => context.fillText(weekday, PADDING + CELL * index + CELL / 2, 100));
 
-  // 右上が斜めに欠けたマスに、タップ数に応じて primary を 8% ずつ重ねる
   const cellSize = CELL - 8;
   const cornerCut = 16;
   for (let date = 1; date <= days; date++) {
-    const index = leadingBlanks + date - 1;
+    const index = blanks + date - 1;
     const left = PADDING + (index % 7) * CELL + 4;
     const top = TOP + Math.floor(index / 7) * CELL + 4;
     const count = counts[`${month}-${padTwo(date)}`] ?? 0;

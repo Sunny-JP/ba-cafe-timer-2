@@ -1,4 +1,3 @@
-// API (/api/*) のルーティング・認証・回数制限と、通知送信の cron
 import { DurableObject } from 'cloudflare:workers';
 import { Drive, DriveError, forgetAccessToken, getAccessToken, linkDrive, unlinkDrive } from './drive.js';
 import {
@@ -26,11 +25,14 @@ import {
 import { BOND_EXP, CATEGORY, CHARACTERS, GIFTS, GIFT_EXP, GIFT_NAME, STUDENT_NAME } from './gamedata.js';
 import {
   TICKET_COOLDOWN,
+  byTapTime,
   isMonth,
   isValidTimeZone,
+  latestTap,
   logicalMonth,
   monthRange,
   nextTapTime,
+  padTwo,
   prevMonth,
   shouldScheduleNotification,
   uuidv7,
@@ -44,7 +46,7 @@ class HttpError extends Error {
   }
 }
 
-// 外部のエラー文はトークンを含み得るので、ログには自前のメッセージだけを出す
+// 外部のエラー文はトークンを含み得るので、ログに出さない
 const safeMessage = (error) =>
   /^(firestore \d+|identitytoolkit \d+|service account auth failed|jwk fetch failed|Drive API \d+)$/.test(error?.message) ? error.message : '';
 
@@ -60,21 +62,14 @@ const DAY = 24 * 60 * MINUTE;
 const isIsoTime = (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
 const isUuid = (value) => typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value);
 const isFcmToken = (value) => typeof value === 'string' && /^[\w:-]{1,4096}$/.test(value);
-const byTapTime = (first, second) => (first.tap_time < second.tap_time ? -1 : first.tap_time > second.tap_time ? 1 : 0);
 const byRecordedDesc = (first, second) => (first.recorded_at < second.recorded_at ? 1 : first.recorded_at > second.recorded_at ? -1 : 0);
-const padTwo = (number) => String(number).padStart(2, '0');
-
-// ---- Drive 上のファイル ----
 
 const tapsFileName = (month) => `taps-${month}.json`;
 const readTaps = async (drive, month) => (await drive.read(tapsFileName(month), { taps: [] })).taps;
 const readProfile = async (drive) => ({ ...DEFAULT_PROFILE, ...(await drive.read('profile.json', {})) });
 const readBonds = async (drive) => (await drive.read('relationship.json', { items: [] })).items;
 
-async function findLastTap(drive, month, taps) {
-  const candidates = taps.length ? taps : await readTaps(drive, prevMonth(month));
-  return candidates.reduce((latest, tap) => (!latest || tap.tap_time > latest.tap_time ? tap : latest), null);
-}
+const findLastTap = async (drive, month, taps) => latestTap(taps.length ? taps : await readTaps(drive, prevMonth(month)));
 
 function bondError(bond) {
   if (typeof bond.char_key !== 'string' || !bond.char_key || bond.char_key.length > 64) return 'char_key が不正です。';
@@ -85,12 +80,8 @@ function bondError(bond) {
 
 const bondExists = (items, bond) => items.some((item) => item.char_key === bond.char_key && item.bond_level === bond.bond_level);
 
-// ---- 統計 (個人を特定しない件数だけを stats/counters に加算する) ----
-
-// 絆の到達人数を数える枠の下限 (100 / 99〜95 / 94〜90 / 89〜80 …)。降順
 const BOND_THRESHOLDS = [100, 95, 90, 80, 70, 60, 50];
 
-// タップの集計キー: 日 (UTC)・論理月・時間帯と曜日 (JST)
 function tapStatKeys(tapTime) {
   const utc = new Date(tapTime);
   const jst = new Date(tapTime + 9 * 60 * MINUTE);
@@ -98,7 +89,6 @@ function tapStatKeys(tapTime) {
   return [`tap_d_${day}`, `tap_m_${logicalMonth(tapTime).replace('-', '')}`, `tap_h_${padTwo(jst.getUTCHours())}`, `tap_w_${jst.getUTCDay()}`];
 }
 
-// このユーザーの寄与: キャラごとに「登録したか」と「最高ランクが入る枠」を 1 と数える
 function bondStatCounts(items) {
   const counts = {};
   const bestLevel = new Map();
@@ -116,7 +106,7 @@ async function addTapStats(env, tapTime) {
   await addCounts(env, Object.fromEntries(tapStatKeys(tapTime).map((statKey) => [statKey, 1]))).catch(() => {});
 }
 
-// 前回反映した分 (statsBonds/{uid}) との差分だけを加算するので、何度呼んでも二重に数えない。未知のキャラは数えない
+// 前回反映分との差分を足すので、何度呼んでも二重に数えない
 async function syncBondStats(env, uid, items) {
   if (!env.FIREBASE_SERVICE_ACCOUNT) return;
   try {
@@ -135,13 +125,10 @@ async function syncBondStats(env, uid, items) {
   }
 }
 
-// ---- 管理画面 ----
-
 const isAdmin = (env, uid) => (env.ADMIN_UIDS ?? '').split(',').some((adminUid) => adminUid.trim() === uid);
 const isAdminRoute = (routeKey) => /^\w+ \/api\/admin\//.test(routeKey);
 const NO_DEVICE_MESSAGE = 'この管理者アカウントで通知がオンになっていません。アプリ側で通知をオンにしてください。';
 
-// 管理画面から送られたキャラクターを検証して整形する
 function validateCatalog(characters) {
   const fail = (message) => {
     throw new HttpError(400, message);
@@ -172,8 +159,7 @@ function validateCatalog(characters) {
   });
 }
 
-// ---- 広告 (楽天市場) ----
-// 正規取扱店 (新品のみ) の shopCode。ここに載せた店の商品だけを出す
+// 新品を扱う正規取扱店の shopCode
 const AD_SHOP_CODES = [];
 const AD_KEYWORD = 'ブルーアーカイブ';
 const AD_NG_KEYWORD = '中古 USED ジャンク';
@@ -185,7 +171,6 @@ const AD_COUNT = 10;
 const affiliateLink = (affiliateId, targetUrl) =>
   `https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/?pc=${encodeURIComponent(targetUrl)}&m=${encodeURIComponent(targetUrl)}`;
 
-// アプリ ID がまだない間、手元で見た目を確かめるための仮の商品 (.dev.vars に ADS_SAMPLE=1)
 function sampleAds(env) {
   const searchUrl = `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(AD_KEYWORD)}/`;
   const url = env.RAKUTEN_AFFILIATE_ID ? affiliateLink(env.RAKUTEN_AFFILIATE_ID, searchUrl) : searchUrl;
@@ -216,7 +201,7 @@ async function searchShop(env, shopCode) {
   }));
 }
 
-// 楽天の API は 1 秒に 1 回までなので、店ごとに間を空けて読み、結果は 6 時間キャッシュする
+// 楽天の API は 1 秒に 1 回まで
 async function fetchAds(env, ctx) {
   const cache = caches.default;
   const cached = await cache.match(AD_CACHE_URL);
@@ -236,7 +221,6 @@ async function fetchAds(env, ctx) {
   return usable;
 }
 
-// 管理画面で配信をオフにしたときは空を返す (端末は広告の枠ごと出さない)
 async function adsEnabled(env) {
   if (!env.FIREBASE_SERVICE_ACCOUNT) return false;
   try {
@@ -249,17 +233,14 @@ async function adsEnabled(env) {
 
 async function handleAds(env, ctx) {
   let items = [];
-  if (!(await adsEnabled(env))) items = [];
-  else if (env.ADS_SAMPLE === '1') items = sampleAds(env);
-  else if (env.RAKUTEN_APP_ID && AD_SHOP_CODES.length) items = await fetchAds(env, ctx);
+  const enabled = await adsEnabled(env);
+  if (enabled && env.ADS_SAMPLE === '1') items = sampleAds(env);
+  else if (enabled && env.RAKUTEN_APP_ID && AD_SHOP_CODES.length) items = await fetchAds(env, ctx);
   const shuffled = items.map((item) => [Math.random(), item]).sort((first, second) => first[0] - second[0]).map(([, item]) => item);
   return json({ items: shuffled.slice(0, AD_COUNT) });
 }
 
-// ---- ルート ----
-
 const routes = {
-  // タイマー画面に必要な分。is_admin は端末のログの詳しさに、ads は広告を読みに行くかどうかに使う
   'GET /api/bootstrap': async ({ drive, env, uid, url }) => {
     const month = url.searchParams.get('month') ?? logicalMonth(Date.now());
     if (!isMonth(month)) throw new HttpError(400, 'month が不正です。');
@@ -273,8 +254,7 @@ const routes = {
     return { month, taps: await readTaps(drive, month) };
   },
 
-  // 端末が決めた ID で届くまで送り直されるので、同じ ID は二重に記録しない。
-  // 通知の予約は Drive より速い Firestore へ先に始め、別の端末のクールダウン中 (409) なら取り消す
+  // 通知の予約は先に始め、別の端末で記録済みなら取り消す
   'POST /api/taps': async ({ drive, env, uid, body, ctx }) => {
     const now = Date.now();
     const hasClientValues = body?.tap_time !== undefined || body?.id !== undefined;
@@ -317,7 +297,6 @@ const routes = {
     return { tap, scheduled, send_at: scheduled ? new Date(sendAt).toISOString() : null };
   },
 
-  // チケットは、記録済みの使用から 20 時間以内の別の値 (別の端末・遅れて届いた送信) を反映せず conflicts で返す
   'PUT /api/profile': async ({ drive, body }) => {
     const profile = await readProfile(drive);
     const conflicts = [];
@@ -357,11 +336,10 @@ const routes = {
     return { item };
   },
 
-  'DELETE /api/relationship': async ({ drive, env, uid, body, url }) => {
-    const id = body.id ?? url.searchParams.get('id');
+  'DELETE /api/relationship': async ({ drive, env, uid, body }) => {
     const items = await readBonds(drive);
-    if (!items.some((item) => item.id === id)) throw new HttpError(404, '見つかりません。');
-    const next = items.filter((item) => item.id !== id);
+    if (!items.some((item) => item.id === body.id)) throw new HttpError(404, '見つかりません。');
+    const next = items.filter((item) => item.id !== body.id);
     await drive.write('relationship.json', { items: next });
     await syncBondStats(env, uid, next);
     return { ok: true };
@@ -383,7 +361,6 @@ const routes = {
 
   'GET /api/catalog': async ({ env }) => (env.FIREBASE_SERVICE_ACCOUNT ? getCatalog(env) : { characters: [] }),
 
-  // version は内容のハッシュ。端末が送った ?v= と同じなら本体を省く
   'GET /api/gamedata': async ({ env, url }) => {
     const data = {
       bondExp: BOND_EXP,
@@ -419,7 +396,6 @@ const routes = {
         .slice(0, limit);
     const distribution = (prefix, length, padded) => Array.from({ length }, (_, index) => count(`${prefix}${padded ? padTwo(index) : index}`));
 
-    // 到達人数の多い順 (100 → 95 → … の枠で比べ、最後は登録ユーザー数)
     const charNames = new Map([...CHARACTERS, ...catalog.characters].map((character) => [character.key, character.name]));
     const bonds = [...charNames]
       .map(([key, name]) => ({
@@ -454,7 +430,6 @@ const routes = {
     return result;
   },
 
-  // 記録はせず、そのタップで何が起きるかを返す。schedule=true なら 60 秒後の通知を実際に予約する
   'POST /api/admin/test-tap': async ({ env, uid, body }) => {
     const tapTime = isIsoTime(body?.tap_time) ? Date.parse(body.tap_time) : Date.now();
     const sendAt = shouldScheduleNotification(tapTime);
@@ -478,7 +453,7 @@ const routes = {
     return result;
   },
 
-  // 組み込みデータに取り込み済みのキャラがカタログに残っていても保存できるよう、読み飛ばす
+  // 組み込みに移したキャラがカタログに残っていても保存できるようにする
   'PUT /api/admin/catalog': async ({ env, body }) => {
     const storedKeys = new Set((await getCatalog(env)).characters.map((character) => character.key));
     const isBuiltIn = (key) => CHARACTERS.some((character) => !character.extra && character.key === key);
@@ -493,7 +468,6 @@ const routes = {
     return { ok: true };
   },
 
-  // Drive のデータを消したあとの後始末は、失敗してもユーザーにはエラーを返さない
   'DELETE /api/account': async ({ drive, env, uid }) => {
     await drive.removeAll();
     if (env.FIREBASE_SERVICE_ACCOUNT) {
@@ -507,7 +481,6 @@ const routes = {
     return { ok: true };
   },
 
-  // 形式は POST /api/import がそのまま読み込める (doc/import-file.md)
   'GET /api/export': async ({ drive }) => {
     const fileNames = [...(await drive.index()).keys()].filter((fileName) => /^taps-\d{4}-\d{2}\.json$/.test(fileName)).sort();
     const taps = [];
@@ -526,7 +499,6 @@ const routes = {
     return { schema: 1, taps: taps.sort(byTapTime), relationship, profile: { ticket1_time: profile.ticket1_time, ticket2_time: profile.ticket2_time } };
   },
 
-  // 既存の ID を保持し、不正な行・重複・2024 年以前と未来の記録は読み飛ばす
   'POST /api/import': async ({ drive, env, uid, body }) => {
     const result = { taps: 0, relationship: 0, skipped: 0, profile: false };
     const latestAllowed = Date.now() + MINUTE;
@@ -592,11 +564,9 @@ const routes = {
   },
 };
 
-// Drive を使わないルート
 const WITHOUT_DRIVE = new Set(['PUT /api/devices', 'DELETE /api/devices', 'POST /api/auth/drive', 'GET /api/catalog', 'GET /api/gamedata']);
-// Drive のファイルを丸ごと書き換えるルート。同時に走ると片方が消えるので、ユーザーごとに1本ずつ処理する
+// Drive のファイルを丸ごと書き換えるので、ユーザーごとに直列にする
 const SERIALIZED = new Set(['POST /api/taps', 'PUT /api/profile', 'POST /api/relationship', 'DELETE /api/relationship', 'DELETE /api/account', 'POST /api/import']);
-// 回数制限が厳しい (HEAVY_LIMIT) ルート。ほかの書き込みは WRITE_LIMIT
 const HEAVY = new Set(['POST /api/import', 'POST /api/auth/drive', 'DELETE /api/account']);
 
 async function execute({ env, ctx, routeKey, uid, body, url }) {
@@ -617,7 +587,6 @@ async function execute({ env, ctx, routeKey, uid, body, url }) {
   }
 }
 
-// ユーザーごとの書き込みを受け取った順に処理する Durable Object (メモリの待ち行列だけで、何も保存しない)
 export class UserStore extends DurableObject {
   #queue = Promise.resolve();
 
@@ -635,7 +604,6 @@ export class UserStore extends DurableObject {
   }
 }
 
-// 認証 → 管理者の確認 → 回数制限 → 実行
 async function handle(request, env, ctx) {
   const url = new URL(request.url);
   const routeKey = `${request.method} ${url.pathname}`;
@@ -669,7 +637,7 @@ async function handle(request, env, ctx) {
 }
 
 export default {
-  // 書き込みは、端末が途中で切断しても最後まで処理する
+  // 端末が途中で切断しても、書き込みは最後まで処理する
   async fetch(request, env, ctx) {
     try {
       if (request.method === 'GET' && new URL(request.url).pathname === '/api/ads') return await handleAds(env, ctx);

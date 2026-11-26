@@ -1,4 +1,3 @@
-// 表示言語。UI の文言は /lang/<code>.json を使う言語の分だけ取得し、生徒・贈物・カテゴリ名の訳はゲームデータから受け取る
 export const LANGS = [["ja", "日本語"], ["en", "English"], ["ko", "한국어"], ["zh", "中文"]];
 const LANG_CODES = LANGS.map(([code]) => code);
 const STORAGE_KEY = "ct.lang";
@@ -17,7 +16,6 @@ function loadLang(code) {
   return loadingLangs[code];
 }
 
-// 保存した言語 → ブラウザの言語 → 英語
 function detectLang() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -41,21 +39,17 @@ export async function setLang(code, persist = true) {
   applyStatic();
 }
 
-// 文言。{name} を vars で置き換え、見つからなければキーをそのまま返す
 export function t(key, vars = {}) {
   const text = dictionaries[currentLang]?.[key] ?? key;
   return text.replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? "");
 }
 
-// HTML の data-i18n (本文) と data-i18n-aria (aria-label) を埋める
 export function applyStatic() {
   document.documentElement.lang = currentLang;
   for (const element of document.querySelectorAll("[data-i18n]")) element.textContent = t(element.dataset.i18n);
   for (const element of document.querySelectorAll("[data-i18n-aria]")) element.setAttribute("aria-label", t(element.dataset.i18nAria));
   document.querySelector('meta[name="description"]')?.setAttribute("content", t("description"));
 }
-
-// ---- ゲームデータの名前 (キーは日本語名) ----
 
 let categoryNames = {};
 let giftNames = {};
@@ -67,7 +61,6 @@ export function loadNames(names) {
   studentNameMap = { ...names.student };
 }
 
-// 管理画面で追加したキャラ。未入力の言語は英語名で代用する
 export function registerStudentNames(characters) {
   for (const character of characters ?? []) {
     const english = character.names?.en ?? character.name;

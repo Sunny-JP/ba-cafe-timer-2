@@ -1,17 +1,13 @@
-// 送信待ちの書き込み (タップ・プロフィール)。端末に保存して完了とし、サーバーへは裏で届くまで送る。
-// タップは端末で決めた ID で送り、サーバーは同じ ID を二重に記録しないので、送り直しても安全
 import { ApiError, ReauthRequired, api, getIdToken, log } from "./api.js";
 import { refresh } from "./data.js";
 import { t } from "./i18n.js";
-import { logicalMonth } from "./time.js";
+import { byTapTime, latestTap, logicalMonth } from "./time.js";
 import { DEMO, saveBootCache, state, store } from "./state.js";
 import { render, showReauth, toast } from "./ui.js";
 
 const storageKey = (uid) => `outbox.${uid}`;
-const byTapTime = (first, second) => (first.tap_time < second.tap_time ? -1 : first.tap_time > second.tap_time ? 1 : 0);
-const latestTap = (taps, initial = null) => taps.reduce((latest, tap) => (!latest || tap.tap_time > latest.tap_time ? tap : latest), initial);
 
-export function loadOutbox(uid = state.user?.uid) {
+function loadOutbox(uid = state.user?.uid) {
   const saved = uid ? store.json(storageKey(uid)) : null;
   return {
     taps: Array.isArray(saved?.taps) ? saved.taps : [],
@@ -26,9 +22,8 @@ function saveOutbox(outbox) {
   updateSyncIcon();
 }
 
-export const hasOutbox = (outbox = loadOutbox()) => outbox.taps.length > 0 || Object.keys(outbox.profile).length > 0;
+const hasOutbox = (outbox = loadOutbox()) => outbox.taps.length > 0 || Object.keys(outbox.profile).length > 0;
 
-// 旧版の ct.pendingTaps を取り込む
 function migrateLegacyTaps() {
   const legacy = store.json("pendingTaps");
   if (!Array.isArray(legacy) || !legacy.length) return;
@@ -56,8 +51,6 @@ export function discardOutbox() {
   saveOutbox({ taps: [], profile: {} });
 }
 
-// ---- サーバーから読んだデータに、まだ届いていない分を重ねる ----
-
 export function withQueuedTaps(month, taps) {
   const knownIds = new Set(taps.map((tap) => tap.id));
   const queued = loadOutbox().taps.filter((tap) => !knownIds.has(tap.id) && logicalMonth(Date.parse(tap.tap_time)) === month);
@@ -66,8 +59,6 @@ export function withQueuedTaps(month, taps) {
 
 export const latestWithQueued = (lastTap) => latestTap(loadOutbox().taps, lastTap ?? null);
 export const withQueuedProfile = (profile) => ({ ...profile, ...loadOutbox().profile });
-
-// ---- ヘッダーの同期アイコン (送信中・再送待ち) ----
 
 const syncStatus = { sending: false, waiting: false };
 
@@ -82,8 +73,6 @@ function updateSyncIcon() {
   icon.setAttribute("aria-label", icon.title);
 }
 
-// ---- 送信 ----
-
 let running = null;
 let retryTimer = 0;
 let retryCount = 0;
@@ -96,7 +85,6 @@ function scheduleRetry() {
   retryTimer = setTimeout(flush, delay);
 }
 
-// 内容が不正なもの (4xx) は捨てる。認証・タイムアウト・回数制限は送り直す
 const isPermanentError = (error) => error instanceof ApiError && error.status >= 400 && error.status < 500 && ![401, 408, 429].includes(error.status);
 
 function notifyRejected(error) {
@@ -104,7 +92,6 @@ function notifyRejected(error) {
   refresh(true);
 }
 
-// サーバーの結果を画面に反映する (受け付けられたら置き換え、拒否されたら取り除く)
 function applyTapResult(tap, accepted) {
   const update = (taps) => (accepted ? taps.map((item) => (item.id === tap.id ? tap : item)) : taps.filter((item) => item.id !== tap.id));
   state.monthTaps = update(state.monthTaps);
@@ -126,7 +113,7 @@ async function sendTap(tap) {
   saveOutbox(outbox);
 }
 
-// 送っている間に同じ項目がさらに変わっていたら、その分は残して次に送る
+// 送信中に変わった項目は残し、次に送る
 async function sendProfile(patch) {
   let data = null;
   try {
@@ -146,7 +133,6 @@ async function sendProfile(patch) {
   if (data.conflicts?.length) notifyRejected({ code: "conflict" });
 }
 
-// 1 件送る。続けてよければ true
 async function sendNext() {
   const outbox = loadOutbox();
   if (outbox.taps.length) return sendTap(outbox.taps[0]).then(() => true);
@@ -179,7 +165,6 @@ async function sendAll() {
   }
 }
 
-// 送信待ちを順に送る。送信中に呼ばれたら、今の送信が続けて拾う
 export function flush() {
   if (DEMO || !state.user) return Promise.resolve();
   migrateLegacyTaps();
@@ -192,8 +177,7 @@ export function flush() {
   return running;
 }
 
-// ---- Service Worker (Background Sync) 用の写し ----
-// Service Worker は localStorage を読めないので IndexedDB に写す。送るときの ID トークン (1 時間有効) も添える
+// Service Worker は localStorage を読めないので IndexedDB に写す
 
 const DB_NAME = "ct-outbox";
 const STORE_NAME = "kv";
@@ -228,7 +212,6 @@ async function mirrorToWorker(outbox) {
   }
 }
 
-// ログアウト時: ID トークンを含む写しを残さない
 export function clearWorkerOutbox() {
   if (!DEMO && "indexedDB" in window) withDatabase((objectStore) => objectStore.delete("outbox")).catch(() => {});
 }
@@ -242,7 +225,6 @@ async function registerBackgroundSync() {
   }
 }
 
-// 送るタイミング: 通信が戻ったとき・前面に戻ったとき・画面が隠れるとき (送り切れない分は Background Sync に任せる)
 export function initOutbox() {
   if (DEMO) return;
   addEventListener("online", flush);

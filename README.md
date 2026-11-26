@@ -5,7 +5,6 @@ Cloudflare Workers(API と静的ファイル配信)+ Firebase(認証・通知)+ 
 
 - **ファイルごとの仕様・API・保存データ**: `doc/manual.md` と `doc/manual.pdf`(手元の保守用で Git には含めません。コードを変えたら一緒に更新し、`node scripts/spec-pdf.mjs` で PDF も作り直してください)
 - 取り込みファイルの形式: [doc/import-file.md](doc/import-file.md)
-- 初期の設計と開発計画: [doc/renewal plan.md](doc/renewal%20plan.md)
 
 ## 機能
 
@@ -54,9 +53,9 @@ src/
   drive.js                  Drive のトークン管理と appDataFolder の読み書き
   firebase.js               ID トークン検証・Firestore・FCM・Firebase Auth
   gamedata.js               ゲームデータ本体 (絆 EXP 表・贈物・キャラ・名前)
-scripts/build.mjs           ビルド
+scripts/                    ビルド (build.mjs)・画面写真の撮影 (capture-guide.mjs)
 test/                       テスト
-doc/                        仕様書・設計書
+doc/                        仕様書
 ```
 
 ## セットアップ

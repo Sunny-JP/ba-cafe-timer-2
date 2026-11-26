@@ -1,13 +1,11 @@
-// /demo.html の見本データ (使い方ガイドの画面写真用)。生徒名・贈物・EXP 表はすべて架空のもので、保存・通信はしない
 import { loadGameData } from './gamedata.js';
-import { logicalDay, logicalMonth } from './time.js';
+import { logicalDay, logicalMonth, padTwo } from './time.js';
 
 const HOUR = 3600e3;
 const MINUTE = 60e3;
 const DEMO_LANGS = ['ja', 'en', 'ko', 'zh'];
 
-// URL: /demo.html?tab=timer|calendar|bond|settings  &lang=ja|en|ko|zh  &mode=light|dark  &menu=1  &doc=guide  &char=demoA
-export const demoParams = new URLSearchParams(location.search);
+const demoParams = new URLSearchParams(location.search);
 export const demoMenu = !!demoParams.get('menu');
 export const demoLang = DEMO_LANGS.includes(demoParams.get('lang')) ? demoParams.get('lang') : null;
 
@@ -44,7 +42,6 @@ function gameData() {
   return { bondExp, giftExp: { nb: 1, na: 1.5, ns: 2, sa: 1.5, ss: 2 }, gifts, characters, names, catalog: { characters: [] } };
 }
 
-// 当月のタップを1日3回ずつ並べる。最後は約50分前にして、カウントダウンが動く画面にする
 function monthTaps(now) {
   const month = logicalMonth(now);
   const [year, monthNumber] = month.split("-").map(Number);
@@ -52,7 +49,7 @@ function monthTaps(now) {
   const recentLimit = now - 50 * MINUTE;
   const taps = [];
   for (let date = 1; date <= 31; date++) {
-    const day = `${month}-${String(date).padStart(2, "0")}`;
+    const day = `${month}-${padTwo(date)}`;
     if (day > today) break;
     const dayStart = Date.UTC(year, monthNumber - 1, date, 4) - 9 * HOUR;
     for (const [order, hoursAfterStart] of [[0, 0.6], [1, 7.1], [2, 12.8]]) {
@@ -64,7 +61,6 @@ function monthTaps(now) {
   return taps;
 }
 
-// 見本の絆の推移 (緩やかに上がり、ときどき一気に上がる)。[ランク, 何日前]
 const BOND_HISTORY = {
   demoA: [[40, 170], [46, 150], [50, 130], [55, 118], [60, 100], [64, 88], [68, 74], [72, 61], [74, 49], [78, 36], [81, 24], [83, 15], [85, 9], [86, 5]],
   demoB: [[20, 90], [30, 60], [41, 30]],

@@ -1,5 +1,3 @@
-// Firebase の REST API: ID トークンの検証・Firestore・FCM による通知・Firebase Auth の管理 API
-// 秘密情報: env.FIREBASE_SERVICE_ACCOUNT (サービスアカウントの鍵 JSON)
 import { uuidv7 } from "../public/js/time.js";
 
 const base64UrlToBytes = (text) => Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (char) => char.charCodeAt(0));
@@ -9,8 +7,6 @@ const bytesToBase64Url = (buffer) =>
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 const jsonToBase64Url = (value) => bytesToBase64Url(new TextEncoder().encode(JSON.stringify(value)));
-
-// ---- ID トークンの検証 ----
 
 const JWK_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 let jwkCache = { keys: null, expiresAt: 0 };
@@ -24,7 +20,6 @@ async function getPublicKeys() {
   return jwkCache.keys;
 }
 
-// 署名・期限・発行先を確かめ、成功すればペイロード (sub = uid、iat = 発行時刻) を返す。失敗時は null
 export async function verifyIdToken(token, projectId) {
   try {
     const [headerPart, payloadPart, signaturePart] = token.split(".");
@@ -45,8 +40,6 @@ export async function verifyIdToken(token, projectId) {
   }
 }
 
-// ---- サービスアカウントのアクセストークン (期限まで使い回す) ----
-
 let serviceTokenCache = { token: null, expiresAt: 0 };
 let serviceTokenRequest = null;
 
@@ -56,7 +49,7 @@ function serviceToken(env) {
   return serviceTokenRequest;
 }
 
-// ID トークンの検証と並行して取っておき、起動直後の読み込みの待ち時間を減らす
+// 起動直後の待ち時間を減らすため、先に取っておく
 export function warmServiceToken(env) {
   if (env.FIREBASE_SERVICE_ACCOUNT) serviceToken(env).catch(() => {});
 }
@@ -90,11 +83,9 @@ async function requestServiceToken(env) {
   return serviceTokenCache.token;
 }
 
-// ---- Firestore ----
-
 const documentsUrl = (env) => `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-// 404 はそのまま返し (呼び出し側で「無い」と扱う)、それ以外の失敗は例外にする
+// 404 は呼び出し側で「無い」と扱う
 async function firestore(env, path, init = {}) {
   const response = await fetch(`${documentsUrl(env)}${path}`, {
     ...init,
@@ -129,7 +120,6 @@ export async function setDevices(env, uid, tokens) {
   await firestore(env, `/devices/${uid}`, { method: "PATCH", body: JSON.stringify({ fields: { tokens: { arrayValue: { values } } } }) });
 }
 
-// Drive の暗号化済みリフレッシュトークン
 export async function getDriveAuth(env, uid) {
   const response = await firestore(env, `/driveAuth/${uid}`);
   if (response.status === 404) return null;
@@ -144,7 +134,6 @@ export async function deleteDriveAuth(env, uid) {
   await firestore(env, `/driveAuth/${uid}`, { method: "DELETE" });
 }
 
-// 管理画面で追加したキャラ (30 秒キャッシュ)
 const EMPTY_CATALOG = { characters: [] };
 let catalogCache = { value: null, expiresAt: 0 };
 
@@ -160,7 +149,6 @@ export async function setCatalog(env, catalog) {
   catalogCache = { value: catalog, expiresAt: Date.now() + 30000 };
 }
 
-// 広告配信のオン・オフ (config/ads)。設定がなければオフ
 let adsConfigCache = { value: null, expiresAt: 0 };
 
 export async function getAdsConfig(env) {
@@ -174,8 +162,6 @@ export async function setAdsConfig(env, config) {
   await writeJsonField(env, "/config/ads", config);
   adsConfigCache = { value: config, expiresAt: Date.now() + 30000 };
 }
-
-// ---- 統計 (件数の加減算だけで、個人を特定する情報は持たない) ----
 
 export async function addCounts(env, deltas) {
   const entries = Object.entries(deltas).filter(([, delta]) => delta);
@@ -202,11 +188,8 @@ export async function countDevices(env) {
   return Number((await response.json())[0]?.result?.aggregateFields?.n?.integerValue ?? 0);
 }
 
-// ユーザーごとの「統計へ反映済みの絆の寄与」(差分の加算に使う)
 export const getBondStats = (env, uid) => readJsonField(env, `/statsBonds/${uid}`, {});
 export const setBondStats = (env, uid, counts) => writeJsonField(env, `/statsBonds/${uid}`, counts);
-
-// ---- Firebase Auth の管理 API ----
 
 const identityToolkit = async (env, action, body) =>
   fetch(`https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/${action}`, {
@@ -215,7 +198,6 @@ const identityToolkit = async (env, action, body) =>
     body: JSON.stringify(body),
   });
 
-// 取れなければ null
 export async function countUsers(env) {
   try {
     const response = await identityToolkit(env, "accounts:query", { returnUserInfo: false });
@@ -225,7 +207,6 @@ export async function countUsers(env) {
   }
 }
 
-// 無効化されておらず、トークンが失効処理 (validSince) より後に発行されたものか
 export async function isAccountActive(env, uid, issuedAt) {
   const response = await identityToolkit(env, "accounts:lookup", { localId: [uid] });
   if (!response.ok) throw new Error(`identitytoolkit ${response.status}`);
@@ -237,8 +218,6 @@ async function deleteAuthUser(env, uid) {
   const response = await identityToolkit(env, "accounts:delete", { localId: uid });
   if (!response.ok) throw new Error(`identitytoolkit ${response.status}`);
 }
-
-// ---- 通知の予約 (pending/{uid}_{タップ ID}) ----
 
 const pendingPath = (uid, id) => `/pending/${uid}_${id}`;
 
@@ -263,7 +242,6 @@ async function deleteDocument(env, name) {
   await fetch(`https://firestore.googleapis.com/v1/${name}`, { method: "DELETE", headers: { Authorization: `Bearer ${await serviceToken(env)}` } });
 }
 
-// アカウント削除: 統計の自分の分・端末・Drive 連携・予約を消し、最後に Auth のアカウントも消す
 export async function deleteUserData(env, uid) {
   const contribution = await getBondStats(env, uid);
   await addCounts(env, Object.fromEntries(Object.entries(contribution).map(([statKey, count]) => [statKey, -count])));
@@ -275,8 +253,6 @@ export async function deleteUserData(env, uid) {
   await deleteAuthUser(env, uid);
 }
 
-// ---- 通知の送信 ----
-
 const MESSAGES = [
   { title: "先生！お仕事お疲れ様です！", body: "生徒さんたちが待ってますよ！" },
   { title: "先生、お仕事お疲れ様です。", body: "生徒のみなさんがお待ちです。" },
@@ -284,7 +260,6 @@ const MESSAGES = [
 const TEST_MESSAGE = { title: "テスト通知", body: "管理画面から送信されました。" };
 const randomMessage = () => MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
 
-// 結果: ok / gone (無効になった端末) / error。失敗時は理由 (UNREGISTERED など) も返す
 async function sendFcm(env, token, message = randomMessage()) {
   const response = await fetch(`https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`, {
     method: "POST",
@@ -296,7 +271,6 @@ async function sendFcm(env, token, message = randomMessage()) {
   return { result: response.status === 404 || response.status === 400 ? "gone" : "error", status: response.status, code };
 }
 
-// ユーザーの全端末へ送り、無効になった端末は登録から外す
 async function sendToUser(env, uid, message, onResult) {
   const tokens = await getDevices(env, uid);
   const alive = [];
@@ -318,7 +292,6 @@ export async function sendTestNotification(env, uid) {
   return summary;
 }
 
-// cron から毎分呼ぶ。1 件の失敗で残りが止まらないようにする
 export async function sendDueNotifications(env) {
   const due = await queryPending(env, {
     fieldFilter: { field: { fieldPath: "sendAt" }, op: "LESS_THAN_OR_EQUAL", value: { timestampValue: new Date().toISOString() } },

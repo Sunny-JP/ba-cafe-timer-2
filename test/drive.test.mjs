@@ -2,7 +2,6 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Drive } from '../src/drive.js';
 
-// Drive API の偽物。ファイルは name -> { id, body } で持ち、呼ばれた API を記録する
 let files;
 let calls;
 let nextId;
@@ -55,8 +54,8 @@ test('2回目以降のリクエストはファイル一覧を取り直さない'
 
 test('一覧に無いファイルは取り直してから判断し、別の isolate が作ったファイルを二重に作らない', async () => {
   const uid = freshUid();
-  await new Drive('t', uid).read('profile.json', {}); // 空の一覧がキャッシュされる
-  files.set('taps-2026-11.json', { id: 'x', body: '{"taps":[1]}' }); // 別の isolate が作成
+  await new Drive('t', uid).read('profile.json', {});
+  files.set('taps-2026-11.json', { id: 'x', body: '{"taps":[1]}' });
   const d = new Drive('t', uid);
   assert.deepEqual(await d.read('taps-2026-11.json', { taps: [] }), { taps: [1] });
   await d.write('taps-2026-11.json', { taps: [1, 2] });

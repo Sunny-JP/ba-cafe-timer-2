@@ -1,4 +1,3 @@
-// ログ・ログイン (Firebase Auth と Drive 連携)・/api/* の呼び出し。DOM に依存しないので管理画面でも使う
 import { initializeApp } from "firebase/app";
 import {
   GoogleAuthProvider,
@@ -11,9 +10,6 @@ import {
   signOut,
 } from "firebase/auth";
 import { DRIVE_SCOPE, GOOGLE_CLIENT_ID, firebaseConfig } from "./config.js";
-
-// ---- ログ ----
-// 一般ユーザーは要点だけ、管理者 (verbose) は本文も残す。直近分は window.ctLog() で取り出せる
 
 const LOG_LIMIT = 300;
 const LOG_BODY_LIMIT = 500;
@@ -62,11 +58,9 @@ if (typeof window !== "undefined") {
   addEventListener("offline", () => log.warn("net", "offline"));
 }
 
-// ---- ログイン ----
-
 export const app = initializeApp(firebaseConfig);
 const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
-// 起動直後は Firebase の初期化 (ユーザー情報の再確認の通信) を待たず、前回保存した期限内の ID トークンで読み込みを始める
+// 起動を速くするため、認証の確定前は保存済みの ID トークンを使う
 const ID_TOKEN_KEY = "ct.idToken";
 const ID_TOKEN_MARGIN = 5 * 60 * 1000;
 let authResolved = false;
@@ -115,7 +109,7 @@ export async function getIdToken() {
   return token;
 }
 
-// Drive 連携は認可コードだけを受け取ってサーバーへ渡す (トークンはブラウザに残さない)
+// トークンをブラウザに残さないよう、認可コードだけを受け取る
 let gsiLoading = null;
 export function preloadGsi() {
   if (window.google?.accounts?.oauth2) return Promise.resolve();
@@ -152,8 +146,6 @@ export async function requestDriveCode() {
   });
 }
 
-// ---- /api/* ----
-
 export class ApiError extends Error {
   constructor(status, message, code) {
     super(message);
@@ -168,7 +160,7 @@ const bodyForLog = (path, text) => {
   return SECRET_BODY_PATHS.has(path.split("?")[0]) ? ` body=(${text.length} chars)` : ` body=${truncate(text)}`;
 };
 
-// サーバーは Drive のファイルを丸ごと書き換えるので、書き込みは1本ずつ送る
+// サーバーはファイルを丸ごと書き換えるので、書き込みは直列にする
 let writeQueue = Promise.resolve();
 function request(method, path, body) {
   if (method === "GET") return send(method, path, body);
@@ -178,8 +170,7 @@ function request(method, path, body) {
 }
 
 let requestCount = 0;
-// 送信を始めたあとにアプリを閉じても届くよう、書き込みは keepalive (本文 60KB 未満) で送る。
-// Drive のトークン切れ (401 drive_token)・保存していた ID トークンが通らないとき (401 id_token) は1回だけ再試行する
+// keepalive はアプリを閉じても届くが、本文は約 64KB まで
 async function send(method, path, body, firstTry = true) {
   const tag = `#${++requestCount} ${method} ${path}`;
   const startedAt = performance.now();

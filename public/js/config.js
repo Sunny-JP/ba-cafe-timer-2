@@ -1,4 +1,4 @@
-// ブラウザ・Service Worker・Worker で共用する公開設定 (秘密情報は置かない)
+// 公開してよい値だけを置く
 export const firebaseConfig = {
   apiKey: "AIzaSyCyC07Txb42uJD81IB2W3zuHspu0Ximd7A",
   authDomain: "ba-cafe-timer-2.firebaseapp.com",

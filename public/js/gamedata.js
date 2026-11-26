@@ -1,15 +1,13 @@
-// ゲームデータ (絆EXP表・贈物・キャラ・各言語の名前)。本体はサーバー (src/gamedata.js) から取得して端末に保存し、
-// 次回は保存分ですぐ始めて、裏で version を確かめて差し替える
 import { api } from "./api.js";
 import { loadNames, registerStudentNames } from "./i18n.js";
 
 export const BOND_MAX = 100;
-// 贈物の画像 img/gifts.png の1コマの大きさ (sprite は左上から右へ数えたコマ番号)
-export const SPRITE = { cols: 5, width: 142, height: 112 };
-// 好感度の倍率ごとの色 (2.0: 赤 / 1.5: 橙 / 1.0: 青)
+const SPRITE = { cols: 5, width: 142, height: 112 };
 export const RATE_COLOR = { 2: "#e5484d", 1.5: "#f5a524", 1: "#3b82f6" };
 
-// 参照は変えずに中身だけ差し替える
+export const spritePosition = (gift) => `--x:${(gift.sprite % SPRITE.cols) * SPRITE.width};--y:${Math.floor(gift.sprite / SPRITE.cols) * SPRITE.height}`;
+
+// import 先が持つ参照を保つため、中身だけ差し替える
 export const BOND_EXP = {};
 export const GIFT_EXP = {};
 export const GIFTS = [];
@@ -29,7 +27,6 @@ export function loadGameData(data) {
   applyCatalog(data.catalog);
 }
 
-// 管理画面で追加したキャラを後ろに足す。gifts は [GIFTS の番号, 倍率キー]
 export function applyCatalog(catalog) {
   for (let index = CHARACTERS.length - 1; index >= 0; index--) if (CHARACTERS[index].extra) CHARACTERS.splice(index, 1);
   for (const character of catalog?.characters ?? []) {
@@ -38,7 +35,6 @@ export function applyCatalog(catalog) {
   registerStudentNames(catalog?.characters);
 }
 
-// 好きな贈物を獲得 EXP の高い順に
 export function favoriteGifts(character) {
   return (character?.gifts ?? [])
     .map(([giftIndex, rate]) => {
@@ -49,8 +45,6 @@ export function favoriteGifts(character) {
     .filter(Boolean)
     .sort((first, second) => second.total - first.total || (first.sprite ?? 1e9) - (second.sprite ?? 1e9));
 }
-
-// ---- 取得と端末への保存 ----
 
 const STORAGE_KEY = "ct.gamedata";
 let loading = null;
@@ -64,7 +58,6 @@ function readSaved() {
   }
 }
 
-// 変わっていれば反映して保存する。反映したら true
 async function fetchAndApply(savedVersion) {
   const { version, unchanged, ...data } = await api.gamedata(savedVersion);
   if (unchanged) return false;
@@ -84,7 +77,6 @@ export function clearGameDataCache() {
   } catch {}
 }
 
-// fresh: 保存分を使わず取り直す (管理画面)。onUpdate: 保存分で始めたあと、裏の確認で内容が変わったとき
 export function ensureGameData({ fresh = false, onUpdate } = {}) {
   if (loading) return loading;
   const saved = fresh ? null : readSaved();

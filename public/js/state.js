@@ -1,10 +1,8 @@
-// アプリ全体の状態と、端末への保存 (設定・前回の画面のキャッシュ)
 import { CHARACTERS } from "./gamedata.js";
 import { pushEnabled, pushSupported } from "./push.js";
 import { logicalMonth } from "./time.js";
 import { UPDATE_LOGS } from "./updates.js";
 
-// デモ (/demo.html) は見本を表示するだけで、保存も通信もしない
 export const DEMO = __DEMO_BUILD__;
 export const DEMO_ACTIONS = new Set(["dd-toggle", "dd-pick", "gifts-scroll", "theme-toggle", "day", "settings", "doc", "mode", "accent-reset"]);
 
@@ -12,7 +10,6 @@ export const CAL_MIN = "2026-01";
 export const MODES = ["auto", "light", "dark"];
 export const DEFAULT_ACCENT = "#4355b9";
 
-// localStorage の ct.<key>。読み書きできない環境でも例外を出さず、デモでは保存しない
 export const store = {
   get(key, fallback, allowed) {
     try {
@@ -37,7 +34,7 @@ export const store = {
   },
 };
 
-export const emptyProfile = () => ({ ticket1_time: null, ticket2_time: null, timezone: null });
+const emptyProfile = () => ({ ticket1_time: null, ticket2_time: null, timezone: null });
 
 const savedAccent = store.get("accent", "");
 const latestNotice = UPDATE_LOGS[0];
@@ -64,17 +61,13 @@ export const state = {
   bondReady: false,
   deferredLoading: false,
   loading: false,
-  // 最初の読み込みで時刻が確定するまでタップとチケットのボタンを押せなくする
   syncing: !DEMO,
   ads: null,
-  // 広告配信のオン・オフ。前回の読み込みで知った値で始める (ログイン前の文書の表示にも使う)
   adsEnabled: store.get("ads", "") === "1",
   pending: new Set(),
   pushSupported: pushSupported(),
   pushOn: pushEnabled(),
 };
-
-// ---- 前回の画面のキャッシュ (次の起動で通信を待たずに表示する) ----
 
 const bootKey = (uid) => `boot.${uid}`;
 const relKey = (uid) => `rel.${uid}`;

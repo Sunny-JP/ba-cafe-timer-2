@@ -1,6 +1,5 @@
-// 管理画面 (/admin/)。1 つのページの中で URL の #stats などでタブを切り替える (なければ通知。読み込み直さない)。権限の判定はサーバー (ADMIN_UIDS) が行う
 import { api, login, logout, onUser, setVerbose } from "./api.js";
-import { CHARACTERS, GIFTS, GIFT_EXP, RATE_COLOR, SPRITE, applyCatalog, ensureGameData, favoriteGifts } from "./gamedata.js";
+import { CHARACTERS, GIFTS, GIFT_EXP, RATE_COLOR, applyCatalog, ensureGameData, favoriteGifts, spritePosition } from "./gamedata.js";
 import { studentNames } from "./i18n.js";
 import { showForegroundNotifications } from "./push.js";
 import { esc } from "./views.js";
@@ -24,7 +23,6 @@ const TABS = [
   ["ads", "広告配信"],
 ];
 
-// 結果欄に出す (失敗は赤字)
 async function showResult(output, busyText, operation) {
   output.className = "result";
   output.textContent = busyText;
@@ -36,8 +34,6 @@ async function showResult(output, busyText, operation) {
   }
 }
 
-// ---- 通知 ----
-
 function initPushPage() {
   $("#test-push").onclick = () =>
     showResult($("#push-result"), "送信中…", async () => {
@@ -47,8 +43,6 @@ function initPushPage() {
     });
   return showForegroundNotifications;
 }
-
-// ---- タップテスト ----
 
 function initTapTestPage() {
   const formatJst = (iso) => new Date(iso).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", hour12: false });
@@ -73,14 +67,11 @@ function initTapTestPage() {
   return showForegroundNotifications;
 }
 
-// ---- 統計 ----
-
 const formatNumber = (value) => (value == null ? "-" : Number(value).toLocaleString());
 const percent = (value, max) => (max ? Math.max(0, (value / max) * 100) : 0);
 const sum = (values) => values.reduce((total, value) => total + value, 0);
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
-// 縦棒グラフ。最大の棒だけ濃くする。labels は軸ラベル (空文字は非表示)
 function verticalBars(container, axis, values, titles, labels) {
   const max = Math.max(1, ...values);
   const peak = values.indexOf(Math.max(...values));
@@ -112,7 +103,6 @@ function renderStats(stats) {
   verticalBars($("#weekly"), $("#weekly-axis"), stats.weekly, WEEKDAYS.map((weekday) => `${weekday}曜`), WEEKDAYS);
   $("#weekly-sub").textContent = sum(stats.weekly) ? `最も多いのは ${WEEKDAYS[peakWeekday]}曜日` : "まだデータがありません";
 
-  // 到達人数のヒートマップ付きランキング (並びはサーバーで済み)。枠は下限で持つ: 100 / 99～95 / 94～90 …
   const thresholds = stats.thresholds;
   const rangeLabel = (index) => (index === 0 ? `${thresholds[0]}` : `${thresholds[index - 1] - 1}～${thresholds[index]}`);
   const max = Math.max(1, ...stats.bonds.flatMap((bond) => thresholds.map((threshold) => bond.reached[threshold])));
@@ -129,7 +119,6 @@ function renderStats(stats) {
   $("#bonds").innerHTML = rows.length ? header + rows.join("") : '<p class="note">まだ記録がありません。</p>';
 }
 
-// data-tip を持つ要素にホバー・タップしたとき、すぐに出るツールチップ
 function initTooltip() {
   const tooltip = document.createElement("div");
   tooltip.className = "tip";
@@ -152,15 +141,12 @@ function initStatsPage() {
   return () => api.adminStats().then(renderStats, (error) => toast(error.message));
 }
 
-// ---- キャラクター追加 ----
-
 function initCharactersPage() {
   let catalog = { characters: [] };
-  const EFFECTS = [null, "nb", "na", "ns", "sa", "ss"]; // タップするたびに順に切り替える
+  const EFFECTS = [null, "nb", "na", "ns", "sa", "ss"];
   const EFFECT_LABELS = { nb: "通常・中", na: "通常・大", ns: "通常・特大", sa: "高級・大", ss: "高級・特大" };
   const EFFECT_SHORT_LABELS = { nb: "通中", na: "通大", ns: "通特", sa: "高大", ss: "高特" };
-  const pickedGifts = new Map(); // GIFTS の番号 -> 効果
-  const spriteStyle = (gift) => `--x:${(gift.sprite % SPRITE.cols) * SPRITE.width};--y:${Math.floor(gift.sprite / SPRITE.cols) * SPRITE.height}`;
+  const pickedGifts = new Map();
 
   function renderCatalog() {
     const query = $("#char-filter").value.trim().toLowerCase();
@@ -175,7 +161,7 @@ function initCharactersPage() {
           const gifts = favoriteGifts(character)
             .map(
               (gift) => `<span class="pick mini" data-rate="${gift.rate}" style="--rate:${RATE_COLOR[gift.mult]}" title="${esc(gift.name)} (${EFFECT_LABELS[gift.rate]})">
-                <span class="gift-img" style="${spriteStyle(gift)}"></span><span class="eff">${EFFECT_SHORT_LABELS[gift.rate]}</span></span>`,
+                <span class="gift-img" style="${spritePosition(gift)}"></span><span class="eff">${EFFECT_SHORT_LABELS[gift.rate]}</span></span>`,
             )
             .join("");
           const badge = character.extra ? ' <span class="badge">追加</span>' : "";
@@ -190,7 +176,7 @@ function initCharactersPage() {
     $("#picker").innerHTML = GIFTS.map((gift, index) => {
       const rate = pickedGifts.get(index);
       return `<button type="button" class="pick" data-gift="${index}" title="${esc(gift.name)}" ${rate ? `data-rate="${rate}"` : ""} style="--rate:${rate ? RATE_COLOR[GIFT_EXP[rate]] : ""}">
-        <i class="dot"></i><span class="gift-img" style="${spriteStyle(gift)}"></span>
+        <i class="dot"></i><span class="gift-img" style="${spritePosition(gift)}"></span>
         <span class="eff">${rate ? EFFECT_SHORT_LABELS[rate] : ""}</span></button>`;
     }).join("");
     $("#picked-count").textContent = `${pickedGifts.size} 件選択中`;
@@ -248,8 +234,6 @@ function initCharactersPage() {
   };
 }
 
-// ---- 広告配信の切り替え ----
-
 function initAdsPage() {
   const button = $("#ads-toggle");
   let enabled = false;
@@ -278,9 +262,6 @@ function initAdsPage() {
   };
 }
 
-// ---- 共通: ナビ・ログイン・管理者の確認 (管理者でなければアプリへ戻す) ----
-
-// 各タブの準備はページを開いたときに一度だけ行い、管理者と確認できたら読み込みも一度だけ行う
 const onReadyList = [...new Set([initPushPage, initStatsPage, initTapTestPage, initCharactersPage, initAdsPage].map((setup) => setup()))];
 
 $("#shell").innerHTML = `

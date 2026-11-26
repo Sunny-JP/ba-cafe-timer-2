@@ -1,8 +1,4 @@
-// デモ画面 (public/demo.html) から、使い方ガイドや告知用のスクリーンショットを撮る。
-//   node scripts/capture-guide.mjs                                  すべて撮る
-//   node scripts/capture-guide.mjs timer bond --lang ja --device pc --mode light
-// 出力: public/img/guide/<言語>/<画面>-<端末>-<モード>.png。端末ごとに画像の大きさはすべて同じ。
-// Edge か Chrome を DevTools Protocol で動かし、アプリの表示とフォントの読み込みが終わってから撮る。
+// 使い方: node scripts/capture-guide.mjs [画面...] [--lang ..] [--device ..] [--mode ..]
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -12,10 +8,9 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "public");
-const outputDir = path.join(publicDir, "img", "guide");
+const outputDir = path.join(root, "doc", "guide");
 
 const SCALE = 2;
-// 端末: CSS px。PC は横長レイアウト (幅 900px 以上) になる大きさ
 const DEVICES = { phone: { width: 390, height: 844, mobile: true }, pc: { width: 1280, height: 800, mobile: false } };
 const SHOTS = { timer: "tab=timer", calendar: "tab=calendar", bond: "tab=bond", menu: "tab=timer&menu=1", settings: "tab=settings" };
 const LANGS = ["ja", "en", "ko", "zh"];
@@ -68,7 +63,7 @@ function findBrowser() {
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function launchBrowser(profileDir) {
-  // 親が Chromium 系のとき残る変数。付いたままだとブラウザが何も出さずに終了する
+  // CHROME_* が残っていると、ブラウザが何も出さずに終了する
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("CHROME_")));
   const browserProcess = spawn(findBrowser(), ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", "--remote-debugging-port=0", `--user-data-dir=${profileDir}`, "about:blank"], { env, stdio: "ignore" });
   const portFile = path.join(profileDir, "DevToolsActivePort");
@@ -79,7 +74,6 @@ async function launchBrowser(profileDir) {
   return { browserProcess, devtools: await connect(pageTarget.webSocketDebuggerUrl) };
 }
 
-// DevTools Protocol の送受信 (send でコマンド、waitFor でイベントを待つ)
 async function connect(url) {
   const socket = new WebSocket(url);
   await new Promise((resolve, reject) => {
@@ -117,7 +111,6 @@ async function connect(url) {
   };
 }
 
-// アプリが表示され、フォントが揃い、メニュー指定ならダイアログが開くまで待つ
 const READY_CHECK = `(async () => {
   const app = document.getElementById("app");
   if (!app || app.hidden || !document.getElementById("loading").hidden) return false;
@@ -139,7 +132,7 @@ async function capture(devtools, serverPort, { name, device, lang, mode }) {
     if (attempt > 100) throw new Error(`表示が終わりませんでした: ${name} ${device} ${lang} ${mode}`);
     await sleep(100);
   }
-  await sleep(1000); // グラフやダイアログのアニメーションが終わるのを待つ
+  await sleep(1000);
   const { data } = await devtools.send("Page.captureScreenshot", { format: "png", clip: { x: 0, y: 0, width, height, scale: 1 } });
   const destination = path.join(outputDir, lang, `${name}-${device}-${mode}.png`);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
@@ -157,7 +150,7 @@ try {
     for (const device of options.device)
       for (const mode of options.mode)
         for (const name of options.names) {
-          if (device === "pc" && name === "calendar") continue; // PC ではタイマー画面にカレンダーも並ぶ
+          if (device === "pc" && name === "calendar") continue;
           await capture(devtools, server.address().port, { name, device, lang, mode });
         }
 } finally {
@@ -165,7 +158,6 @@ try {
   devtools.close();
   server.close();
   await new Promise((resolve) => (browserProcess.exitCode === null ? browserProcess.once("exit", resolve) : resolve()));
-  // ブラウザの子プロセスが少し遅れてプロファイルを離すことがあるので、消せなくても止めない
   await sleep(1000);
   try {
     fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });

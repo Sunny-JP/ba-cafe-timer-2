@@ -1,4 +1,3 @@
-// データの読み込みと記録 (タップ・プロフィール・絆)、書き出し・取り込み・アカウント削除
 import { ReauthRequired, api, log, logout, requestDriveCode, setVerbose } from "./api.js";
 import { ensureGameData, hasGameData } from "./gamedata.js";
 import { t } from "./i18n.js";
@@ -7,12 +6,8 @@ import { logicalMonth, nextTapTime, shouldScheduleNotification, uuidv7 } from ".
 import { initBondChar, loadRelCache, saveBootCache, saveRelCache, state, store } from "./state.js";
 import { $, busy, confirmDialog, downloadBlob, render, renderCalendarArea, showAds, showReauth, toTimerScreen, toast, withBusy } from "./ui.js";
 
-// ---- エラー処理 ----
-
-// ログイン直後に Drive が未連携なら、バナーを出さずにそのまま認可画面を開く
 export const link = { auto: false };
 
-// 失敗したらトースト (Drive の再認証が必要ならバナー) で知らせて undefined を返す
 export async function guarded(operation) {
   try {
     return await operation();
@@ -31,7 +26,6 @@ export async function guarded(operation) {
   }
 }
 
-// ボタンを処理中表示にして実行する。処理中の連打は無視する
 export async function withPending(buttonKey, operation) {
   if (state.pending.has(buttonKey)) return;
   state.pending.add(buttonKey);
@@ -44,12 +38,9 @@ export async function withPending(buttonKey, operation) {
   }
 }
 
-// ---- 読み込み ----
-
 let loadedAt = 0;
-const monthCache = new Map(); // このセッションで読んだ月のタップ (カレンダー用)
+const monthCache = new Map();
 
-// サーバーのデータに、まだ送れていない操作を重ねて表示する
 function applyBootstrap(data, { keepCalendar = false } = {}) {
   setVerbose(!!data.is_admin);
   const taps = withQueuedTaps(data.month, data.taps);
@@ -67,7 +58,6 @@ function applyBootstrap(data, { keepCalendar = false } = {}) {
   render();
 }
 
-// 別の端末の記録を読み込んでいる間は、タップとチケットのボタンを押せなくする
 async function whileSyncing(task) {
   state.syncing = true;
   render();
@@ -79,7 +69,6 @@ async function whileSyncing(task) {
   }
 }
 
-// 短時間に再読み込みを繰り返したら、読み込みを待たせる (30 秒以内に 11 回目から)。待つ時間 (ms) を返す
 const RELOAD_WINDOW = 30000;
 const RELOAD_LIMIT = 10;
 let loadAllowedAt = 0;
@@ -92,8 +81,6 @@ export function reloadWaitMs(now = Date.now()) {
   return waitMs;
 }
 
-// タイマーの分を先に表示し、絆とゲームデータは裏で読む (絆の通信はタイマーの分と同時に始める)。
-// 読み込み中にユーザーが替わったら結果を捨てる
 export async function loadAll() {
   const uid = state.user?.uid;
   const bonds = api.relationship();
@@ -105,7 +92,6 @@ export async function loadAll() {
   loadDeferred(bonds);
 }
 
-// 前面に戻ったとき (30 秒以内は省略)・別の端末の記録と食い違ったときの読み直し。失敗しても知らせない
 export async function refresh(force = false) {
   if (!state.user || state.loading || Date.now() < loadAllowedAt || (!force && Date.now() - loadedAt < 30000)) return;
   try {
@@ -121,7 +107,6 @@ export async function refresh(force = false) {
   }
 }
 
-// 広告は配信オンのときだけ一度読む。読めなければ出さない
 export async function loadAds() {
   if (state.ads || !state.adsEnabled) return;
   try {
@@ -134,7 +119,6 @@ export async function loadAds() {
   }
 }
 
-// 先に始めた絆の通信 (prefetched) が失敗していたら、1回だけ読み直す
 export async function loadDeferred(prefetched) {
   state.deferredLoading = true;
   const bonds = await guarded(async () => {
@@ -151,7 +135,6 @@ export async function loadDeferred(prefetched) {
   render();
 }
 
-// 端末に保存した絆の記録とゲームデータで、絆タブを待たずに開けるようにする
 export function primeBond(uid) {
   const relationship = loadRelCache(uid);
   if (!relationship || !hasGameData()) return;
@@ -161,7 +144,6 @@ export function primeBond(uid) {
   state.bondReady = true;
 }
 
-// カレンダーの月の切り替え。カレンダー部分だけを描き直す。当月は通信せず、一度見た月はすぐ出してから取り直す
 export async function loadCalendar(month) {
   state.calMonth = month;
   state.selectedDay = null;
@@ -189,8 +171,6 @@ export function selectDay(day) {
 
 export const clearCalendarCache = () => monthCache.clear();
 
-// ---- 記録 (端末に保存して完了とし、サーバーへは outbox.js が送る) ----
-
 export function recordTap() {
   const now = Date.now();
   if (state.lastTap && now < nextTapTime(Date.parse(state.lastTap.tap_time))) return;
@@ -213,8 +193,6 @@ export function saveProfile(patch) {
   flush();
 }
 
-// ---- 絆 ----
-
 export function selectBondChar(charKey) {
   state.bondChar = charKey;
   state.bondLevel = null;
@@ -222,7 +200,7 @@ export function selectBondChar(charKey) {
   render();
 }
 
-// 描き直すと入力中の値が消えるので、送信中はボタンだけを無効にする
+// 描き直すと入力中の値が消えるので、ボタンだけを無効にする
 export async function submitBond(form) {
   const fields = new FormData(form);
   const bond = { char_key: state.bondChar, bond_level: Number(fields.get("bond_level")), recorded_at: fields.get("recorded_at") };
@@ -254,8 +232,6 @@ export async function deleteBond(id) {
   saveRelCache();
   render();
 }
-
-// ---- 書き出し・取り込み・削除 ----
 
 export async function exportData() {
   const data = await withBusy(t("exporting"), 1, () => guarded(() => api.exportData()));

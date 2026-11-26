@@ -1,4 +1,3 @@
-// 通知 (FCM) の端末登録と、画面を開いている間の通知表示
 import { api, app } from "./api.js";
 import { VAPID_KEY } from "./config.js";
 import { t } from "./i18n.js";
@@ -16,7 +15,7 @@ async function currentToken() {
   return getToken(getMessaging(app), { vapidKey: VAPID_KEY, serviceWorkerRegistration: await registerWorker() });
 }
 
-// フォーカス中のタブには SDK が通知を出さないので、ここで出す
+// フォーカス中のタブには SDK が通知を出さない
 let listening = false;
 export async function showForegroundNotifications() {
   if (listening || !pushEnabled()) return;

@@ -1,5 +1,3 @@
-// public/js と public/css/app.css を束ねて最小化する (wrangler dev / deploy の前に自動で実行される)。
-// 出力: dist/app.js・admin.js・demo.js (あとから読み込む部分は dist/chunks/)、dist/app.css、firebase-messaging-sw.js
 import { build } from "esbuild";
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";

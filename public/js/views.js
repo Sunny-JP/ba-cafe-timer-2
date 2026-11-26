@@ -1,8 +1,7 @@
-// 画面の HTML を組み立てる (DOM には触れない)。ユーザーやサーバー由来の文字列は必ず esc() を通す
-import { BOND_MAX, CHARACTERS, RATE_COLOR, SPRITE, favoriteGifts } from "./gamedata.js";
+import { BOND_MAX, CHARACTERS, RATE_COLOR, favoriteGifts, spritePosition } from "./gamedata.js";
 import { LANGS, categoryName, getLang, giftName, studentName, studentNames, t } from "./i18n.js";
 import { CAL_MIN, MODES } from "./state.js";
-import { TICKET_COOLDOWN, daySlots, daysInMonth, fmt, fmtTime, logicalDay, logicalMonth, nextTapTime, prevMonth } from "./time.js";
+import { TICKET_COOLDOWN, daySlots, daysInMonth, fmt, fmtTime, leadingBlanks, logicalDay, logicalMonth, nextTapTime, padTwo, prevMonth } from "./time.js";
 import { UPDATE_LOGS } from "./updates.js";
 
 const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -38,13 +37,9 @@ export const icon = (name, size = 20) => `<svg viewBox="0 0 24 24" width="${size
 const spinner = '<span class="btn-spin" role="status" aria-label="Loading"></span>';
 const capitalize = (text) => text[0].toUpperCase() + text.slice(1);
 
-// ---- タイマー ----
-// data-until (期限のエポック ms) の要素は毎秒カウントダウンし、data-enable-at のボタンはその時刻に有効になる
-
 const countdown = (until) => `<span class="count" data-until="${until}"></span>`;
 
 export function tick(root, now = Date.now()) {
-  const padTwo = (number) => String(number).padStart(2, "0");
   for (const element of root.querySelectorAll("[data-until]")) {
     const seconds = Math.max(0, Math.ceil((Number(element.dataset.until) - now) / 1000));
     element.textContent = `${padTwo(Math.floor(seconds / 3600))}:${padTwo(Math.floor(seconds / 60) % 60)}:${padTwo(seconds % 60)}`;
@@ -52,7 +47,6 @@ export function tick(root, now = Date.now()) {
   for (const button of root.querySelectorAll("[data-enable-at]")) button.disabled = "pending" in button.dataset || Number(button.dataset.enableAt) > now;
 }
 
-// 処理中・別の端末の記録を読み込み中は、押せなくしてスピナーを出す
 const actionButton = (state, pendingKey, attributes, label) => {
   const waiting = state.pending.has(pendingKey) || state.syncing;
   return `<button class="primary wide" ${attributes}${waiting ? " data-pending" : ""}>${waiting ? spinner : label}</button>`;
@@ -101,8 +95,6 @@ export function renderAds(state) {
   return `<p class="ads-label">PR｜${esc(t("rakutenIchiba"))}</p><ul class="ads-list">${cards}</ul>`;
 }
 
-// ---- カレンダー ----
-
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const heatLevel = (count) => Math.min(8, count);
 
@@ -121,16 +113,13 @@ function monthPicker(month, latestMonth) {
   return dropdown({ field: "cal-ym", value: month, large: true, options });
 }
 
-// #cal-area の中身。月の切り替えではここだけを描き直す
 export function calendarBody(state) {
   const { calMonth: month, calTaps: taps, selectedDay, calLoading } = state;
   const latestMonth = logicalMonth(Date.now());
-  const [year, monthNumber] = month.split("-").map(Number);
   const counts = dayCounts(taps);
-  const leadingBlanks = (new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay() + 6) % 7;
-  const cells = Array(leadingBlanks).fill("<div></div>");
+  const cells = Array(leadingBlanks(month)).fill("<div></div>");
   for (let date = 1; date <= daysInMonth(month); date++) {
-    const day = `${month}-${String(date).padStart(2, "0")}`;
+    const day = `${month}-${padTwo(date)}`;
     const count = counts[day] ?? 0;
     const level = heatLevel(count);
     const classes = `day${level >= 5 ? " hi" : ""}${level >= 7 ? " top" : ""}${day === selectedDay ? " sel" : ""}`;
@@ -158,11 +147,7 @@ export function calendarBody(state) {
 
 export const renderCalendar = (state) => `<div id="cal-area">${calendarBody(state)}</div>`;
 
-// ---- ドロップダウン ----
-// options: [[値, ラベル, アイコン画像 (任意), 検索用の文字列 (任意)], ...]。ラベルは文字列か [本文, 補足]
-
 const optionIcon = (src) => (src ? `<img class="dd-icon" src="${esc(src)}" alt="" loading="lazy" decoding="async">` : "");
-// 「(…)」の部分は小さい文字にする (スマホで溢れないように)
 const optionText = (text) => {
   const match = /^(.*?)\s*([（(].*)$/.exec(text);
   return match ? `${esc(match[1])} <span class="paren">${esc(match[2])}</span>` : esc(text);
@@ -190,8 +175,6 @@ function dropdown({ field, value, options, large = false, search = false }) {
 
 export const langPicker = (value) => dropdown({ field: "lang", value, options: LANGS });
 
-// ---- 更新情報・読み込み中の表示 ----
-
 const localized = (text) => (typeof text === "string" ? text : (text?.[getLang()] ?? text?.ja ?? ""));
 const logHeading = (entry) => entry.date ?? localized(entry.label);
 
@@ -218,13 +201,10 @@ export const skeleton = () => `<div class="skeleton" role="status" aria-busy="tr
 
 const loader = () => `<div class="center loader" role="status"><span class="spinner" aria-hidden="true"></span><p>${t("loading")}</p></div>`;
 
-// ---- 絆 ----
-
 export const bondRecords = (state, charKey) => state.relationship.filter((item) => item.char_key === charKey).sort((first, second) => second.bond_level - first.bond_level);
 const nextBondLevel = (state, charKey) => Math.min(BOND_MAX, (bondRecords(state, charKey)[0]?.bond_level ?? 0) + 1);
 const charIcon = (charKey) => `/img/students/${encodeURIComponent(charKey)}.webp`;
 
-// 日本語はデータ順 (五十音順)、ほかの言語は表示名の辞書順
 function charOptions() {
   const lang = getLang();
   const options = CHARACTERS.map((character) => [
@@ -243,14 +223,12 @@ export function renderBond(state) {
   const level = state.bondLevel ?? nextBondLevel(state, charKey);
   const date = state.bondDate ?? fmt(Date.now(), { year: "numeric", month: "2-digit", day: "2-digit" }, state.profile.timezone).replace(/\//g, "-");
   const gifts = favoriteGifts(character)
-    .map((gift) => {
-      const spriteX = (gift.sprite % SPRITE.cols) * SPRITE.width;
-      const spriteY = Math.floor(gift.sprite / SPRITE.cols) * SPRITE.height;
-      return `<li class="gift" title="${esc(giftName(gift.name))}">
+    .map(
+      (gift) => `<li class="gift" title="${esc(giftName(gift.name))}">
         <i class="dot" style="background:${RATE_COLOR[gift.mult]}"></i>
-        <span class="gift-img" style="--x:${spriteX};--y:${spriteY}"></span>
-        <span class="gift-cat">${esc(categoryName(gift.category))}</span></li>`;
-    })
+        <span class="gift-img" style="${spritePosition(gift)}"></span>
+        <span class="gift-cat">${esc(categoryName(gift.category))}</span></li>`,
+    )
     .join("");
   const history = bondRecords(state, charKey)
     .slice(0, 4)
@@ -296,8 +274,6 @@ export function renderBond(state) {
   </div>`;
 }
 
-// ---- メニュー・文書・設定 ----
-
 const DOCS = ["about", "guide", "faq", "changelog", "terms", "privacy", "operator"];
 const DOC_ICONS = { about: "info", guide: "book", faq: "help", terms: "file", privacy: "shield", changelog: "history", operator: "person" };
 
@@ -320,7 +296,6 @@ export function renderMenu(state) {
 
 export const renderDoc = (state) => `<section class="block doc">${state.docHtml ?? ""}</section>`;
 
-// 現在の UTC オフセット (分) と "+09:00" 形式の表記
 function zoneOffset(timeZone, at = new Date()) {
   try {
     const parts = new Intl.DateTimeFormat("en", { timeZone, timeZoneName: "longOffset" }).formatToParts(at);

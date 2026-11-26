@@ -1,12 +1,8 @@
-// Service Worker (ビルドで /firebase-messaging-sw.js に出力する)。
-// 通知の受信、画面の部品の保存、送り切れなかったタップ・チケットの送信 (Background Sync) を行う
 import { initializeApp } from "firebase/app";
 import { getMessaging } from "firebase/messaging/sw";
 import { firebaseConfig } from "./config.js";
 
 getMessaging(initializeApp(firebaseConfig));
-
-// ---- 画面の部品の保存 (API と管理画面は保存しない) ----
 
 const CACHE_NAME = "ct-static-v1";
 const NOT_CACHED = ["/api/", "/cdn-cgi/", "/admin", "/dist/admin", "/firebase-messaging-sw.js"];
@@ -23,7 +19,6 @@ self.addEventListener("activate", (event) => {
 
 const isCacheable = (response) => response.ok && response.type === "basic" && !response.redirected;
 
-// ページ本体は常に最新を取りに行き、オフラインのときだけ保存分を使う。JS・CSS・画像は保存分をすぐ返して裏で取り直す
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
@@ -55,8 +50,6 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// ---- 送信待ちの記録の送信 (中身はページの outbox.js が IndexedDB に写したもの) ----
-
 const DB_NAME = "ct-outbox";
 const STORE_NAME = "kv";
 
@@ -77,7 +70,7 @@ const withDatabase = (mode, operation) =>
     };
   });
 
-// 送れたものを写しから外す。読み直してから外すので、ページ側の更新は消さない
+// ページ側の更新を消さないよう、読み直してから外す
 const removeSent = (tapId, profile) =>
   withDatabase("readwrite", (objectStore) => {
     const request = objectStore.get("outbox");
@@ -91,7 +84,6 @@ const removeSent = (tapId, profile) =>
     };
   });
 
-// 写しの uid 本人の、期限内のトークンか
 function isUsableToken(outbox) {
   try {
     const { exp, sub } = JSON.parse(atob(outbox.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
@@ -101,13 +93,12 @@ function isUsableToken(outbox) {
   }
 }
 
-// 通信・認証・回数制限などの一時的な失敗は、ブラウザにあとでやり直してもらう
 async function post(method, path, token, body) {
   const response = await fetch(path, { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!response.ok && (response.status >= 500 || [401, 408, 429].includes(response.status))) throw new Error(`HTTP ${response.status}`);
 }
 
-// 画面が開いていればページに任せる。ページの keepalive 送信が終わるのを少し待ってから読む
+// ページと二重に送らないよう、keepalive 送信の完了を待ち、画面があれば任せる
 async function sendOutbox() {
   await new Promise((resolve) => setTimeout(resolve, 4000));
   const windows = await self.clients.matchAll({ type: "window" });

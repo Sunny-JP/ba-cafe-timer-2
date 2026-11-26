@@ -1,33 +1,7 @@
-/* 色は light-dark() で切り替える。data-mode で強制、未指定は OS 設定に従う。 */
-:root {
-  color-scheme: light dark;
-  --w: 560px; /* 本文の最大幅 */
-  --accent: #4355b9; /* ピッカーで変更。以下の配色はここから導出する */
-  --primary: light-dark(oklch(from var(--accent) .48 c h), oklch(from var(--accent) .8 c h));
-  --on-primary: light-dark(#fff, oklch(from var(--accent) .25 c h));
-  --primary-container: light-dark(oklch(from var(--accent) .9 calc(c * .4) h), oklch(from var(--accent) .35 calc(c * .8) h));
-  --on-primary-container: light-dark(oklch(from var(--accent) .2 calc(c * .8) h), oklch(from var(--accent) .9 calc(c * .4) h));
-  --surface: light-dark(#f8f9fb, #000);
-  --container: light-dark(#eceff4, #17181c);
-  --on-surface: light-dark(#1b1c1f, #e3e3e8);
-  --on-variant: light-dark(#5b5f68, #a9adb7);
-  --outline: light-dark(#c5c9d2, #43464e);
-  --error: light-dark(#b3261e, #f2b8b5);
-  --ok: light-dark(#146c2e, #7fd99a);
-  --font: "Noto Sans", "Noto Sans JP", system-ui, sans-serif;
-}
+:root { color-scheme: light dark; --w: 560px; --accent: #4355b9; --primary: light-dark(oklch(from var(--accent) .48 c h), oklch(from var(--accent) .8 c h)); --on-primary: light-dark(#fff, oklch(from var(--accent) .25 c h)); --primary-container: light-dark(oklch(from var(--accent) .9 calc(c * .4) h), oklch(from var(--accent) .35 calc(c * .8) h)); --on-primary-container: light-dark(oklch(from var(--accent) .2 calc(c * .8) h), oklch(from var(--accent) .9 calc(c * .4) h)); --surface: light-dark(#f8f9fb, #000); --container: light-dark(#eceff4, #17181c); --on-surface: light-dark(#1b1c1f, #e3e3e8); --on-variant: light-dark(#5b5f68, #a9adb7); --outline: light-dark(#c5c9d2, #43464e); --error: light-dark(#b3261e, #f2b8b5); --ok: light-dark(#146c2e, #7fd99a); --font: "Noto Sans", "Noto Sans JP", system-ui, sans-serif; }
 :root[data-mode="light"] { color-scheme: light; }
 :root[data-mode="dark"] { color-scheme: dark; }
-
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--surface);
-  color: var(--on-surface);
-  font: 400 15px/1.6 var(--font);
-  --nav-space: calc(80px + env(safe-area-inset-bottom));
-  padding-bottom: var(--nav-space);
-}
+body { margin: 0; background: var(--surface); color: var(--on-surface); font: 400 15px/1.6 var(--font); --nav-space: calc(80px + env(safe-area-inset-bottom)); padding-bottom: var(--nav-space); transition: background-color .2s, color .2s; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 [hidden] { display: none !important; }
 h1, h2, h3, p { margin: 0; }
 h1 { font-size: 1.5rem; font-weight: 500; }
@@ -36,137 +10,56 @@ h3 { font-size: .9375rem; font-weight: 500; margin-bottom: 4px; }
 ul.plain { list-style: none; margin: 0; padding: 0; }
 ul.plain li { padding: 10px 0; border-bottom: 1px solid var(--outline); }
 ul.plain li:last-child { border: 0; }
-/* その日のタップ時刻は横に並べて一行で見せる (はみ出すときだけ横スクロール) */
 ul.taps-row { display: flex; gap: 4px 14px; overflow-x: auto; font-variant-numeric: tabular-nums; }
 ul.taps-row li { flex: none; padding: 0; border: 0; white-space: nowrap; }
 strong { font-weight: 500; }
-
-.appbar {
-  position: sticky; top: 0; z-index: 5;
-  padding: 14px 16px;
-  background: var(--surface);
-  font-size: 1.25rem; font-weight: 500;
-  display: flex; justify-content: space-between; align-items: center;
-}
+.appbar { position: sticky; top: 0; z-index: 5; background: var(--surface); font-size: 1.25rem; font-weight: 500; display: flex; justify-content: space-between; align-items: center; }
 .center { max-width: 360px; margin: 0 auto; padding: 96px 24px; display: grid; gap: 16px; }
 .center p { color: var(--on-variant); }
 .loader { justify-items: center; text-align: center; }
-.spinner {
-  width: 40px; height: 40px; border-radius: 50%;
-  border: 4px solid var(--primary-container); border-top-color: var(--primary);
-  animation: spin .8s linear infinite;
-}
+.spinner { width: 40px; height: 40px; border-radius: 50%; border: 4px solid var(--primary-container); border-top-color: var(--primary); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-/* 処理中の操作ブロック。showModal() で背面を操作不能にし、::backdrop で暗くする */
 #busy { border: 0; border-radius: 16px; padding: 28px 32px; min-width: 240px; max-width: calc(100vw - 48px); }
 #busy[open] { display: grid; gap: 14px; justify-items: center; text-align: center; }
 #busy::backdrop { background: rgb(0 0 0 / .55); }
 #busy p { margin: 0; }
 #busy progress { width: 100%; height: 6px; accent-color: var(--primary); }
-#view { max-width: 640px; margin: 0 auto; padding: 4px 16px 16px; display: grid; gap: 12px; }
-
-.card { background: var(--container); border-radius: 16px; padding: 16px; }
-.card.main { background: var(--primary-container); color: var(--on-primary-container); display: grid; gap: 8px; }
-.card.main .sub { color: inherit; opacity: .75; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 420px) { .grid2 { grid-template-columns: 1fr; } }
+#view { margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); }
+.grid2 { display: grid; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
-.row.between { justify-content: space-between; margin-top: 0; }
 .sub { color: var(--on-variant); font-size: .8125rem; }
-.big { font-size: 3rem; line-height: 1.2; font-weight: 400; font-variant-numeric: tabular-nums; }
 .count { font-variant-numeric: tabular-nums; }
-.count.ready { color: var(--ok); }
-.card.main .count.ready { color: inherit; }
-
-button {
-  font: 500 .875rem var(--font);
-  height: 40px;
-  padding: 0 20px;
-  border: 1px solid var(--outline);
-  border-radius: 20px;
-  background: transparent;
-  color: var(--primary);
-  cursor: pointer;
-  transition: background-color .15s;
-}
+button { font: 500 .875rem var(--font); height: 40px; padding: 0 20px; border: 1px solid var(--outline); border-radius: 20px; background: transparent; color: var(--primary); cursor: pointer; transition: background-color .15s, color .15s, transform .18s ease-out, opacity .15s; }
 button:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 10%, transparent); }
 button:disabled { opacity: .38; cursor: default; }
 button.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 88%, var(--on-primary)); }
-.card.main button.primary { height: 52px; border-radius: 26px; font-size: 1rem; margin-top: 8px; }
 button.ghost { border-color: transparent; padding: 0 12px; }
 button.danger { color: var(--error); border-color: var(--error); }
-
-.form { display: grid; gap: 14px; margin-top: 8px; }
 label { display: grid; gap: 4px; font-size: .8125rem; color: var(--on-variant); }
-input, select {
-  font: 400 1rem var(--font);
-  height: 48px;
-  padding: 0 12px;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--on-surface);
-  max-width: 100%;
-}
-input[type="file"] { height: auto; padding: 10px 12px; }
-input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: transparent; }
-
-.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; margin-top: 8px; }
+input { font: 400 1rem var(--font); padding: 0 12px; border: 1px solid var(--outline); color: var(--on-surface); max-width: 100%; }
+input:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: transparent; }
+.cal { display: grid; text-align: center; margin-top: 8px; }
 .cal.loading { opacity: .5; }
 .cal b { font-size: .75rem; font-weight: 500; color: var(--on-variant); padding: 4px 0; }
-.day { position: relative; height: 44px; padding: 0; border: 0; border-radius: 22px; color: var(--on-surface); font-weight: 400; }
-.day small { position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); font-size: .625rem; color: var(--primary); }
-
-#app > nav {
-  position: fixed; inset: auto 0 0 0;
-  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
-  background: var(--container);
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
-}
-#app > nav button { height: 48px; border: 0; border-radius: 24px; color: var(--on-variant); padding: 0; }
-#app > nav button[aria-selected="true"] { background: var(--primary-container); color: var(--on-primary-container); }
-
+.day { position: relative; border: 0; font-weight: 400; --day-bg: color-mix(in srgb, var(--primary) calc(var(--lv, 0) * 8%), var(--container)); }
 .banner { display: flex; gap: 12px; justify-content: center; align-items: center; background: var(--error); color: var(--surface); padding: 8px; font-size: .875rem; }
 .banner button { height: 32px; color: var(--surface); border-color: currentColor; }
-
-dialog { width: min(92vw, 560px); max-height: 85vh; border: 0; border-radius: 28px; padding: 24px; background: var(--container); color: var(--on-surface); }
-dialog::backdrop { background: rgba(0, 0, 0, .4); }
+dialog { width: min(92vw, 560px); max-height: 85vh; border: 0; border-radius: 28px; padding: 24px; background: var(--container); color: var(--on-surface); opacity: 0; transform: translateY(12px); }
 dialog h2 { margin-top: 16px; }
 dialog h2:first-child { margin-top: 0; }
 dialog ul { padding-left: 1.2em; }
-
-#toast {
-  position: fixed; left: 16px; right: 16px; bottom: calc(88px + env(safe-area-inset-bottom));
-  max-width: 480px; margin: 0 auto;
-  background: var(--on-surface); color: var(--surface);
-  padding: 14px 16px; border-radius: 8px; font-size: .875rem; z-index: 10;
-}
-
+#toast { position: fixed; left: 16px; right: 16px; bottom: calc(88px + env(safe-area-inset-bottom)); max-width: 480px; margin: 0 auto; background: var(--on-surface); color: var(--surface); padding: 14px 16px; border-radius: 8px; font-size: .875rem; z-index: 10; animation: toast-in .18s ease-out; }
 button.icon { width: 40px; padding: 0; border: 0; display: grid; place-items: center; color: var(--on-surface); }
 svg { fill: currentColor; flex: none; }
-
-dialog#menu {
-  margin: 0 0 0 auto; height: 100dvh; max-height: none; width: min(88vw, 340px);
-  border-radius: 28px 0 0 28px; padding: 16px 12px; overflow-y: auto;
-}
-hr { border: 0; border-top: 1px solid var(--outline); margin: 12px 0; }
-.menu-head { display: flex; gap: 12px; align-items: center; padding: 8px 12px 12px; }
+.menu-head { display: flex; gap: 12px; align-items: center; }
 .who { display: grid; min-width: 0; }
 .who strong, .who small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who small { color: var(--on-variant); font-size: .75rem; }
-.avatar {
-  position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%; overflow: hidden;
-  display: grid; place-items: center;
-  background: var(--primary-container); color: var(--on-primary-container); font-weight: 500;
-}
+.avatar { position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--primary-container); color: var(--on-primary-container); font-weight: 500; }
 .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.menu-list { display: grid; gap: 2px; }
-.menu-item {
-  display: flex; align-items: center; gap: 12px; width: 100%; height: 48px; padding: 0 12px;
-  border: 0; border-radius: 24px; justify-content: flex-start; text-align: left;
-  color: var(--on-surface); font: 500 .9375rem var(--font); cursor: pointer;
-}
+.menu-list { display: grid; }
+.menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 0 12px; border: 0; border-radius: 24px; justify-content: flex-start; text-align: left; color: var(--on-surface); font: 500 .9375rem var(--font); cursor: pointer; }
 .menu-item:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
 .menu-item.danger { color: var(--error); }
 .menu-text { display: grid; line-height: 1.3; }
@@ -174,344 +67,157 @@ hr { border: 0; border-top: 1px solid var(--outline); margin: 12px 0; }
 .menu-item:has(.menu-text) { height: auto; min-height: 52px; padding-block: 6px; }
 .menu-title { padding: 0 12px; margin: 4px 0 8px; color: var(--on-variant); font-size: .75rem; }
 .hint { padding: 0 12px 8px; }
-.field { padding: 8px 12px 0; }
-.seg { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 12px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); }
 .seg button { border-radius: 0; padding: 0; margin-left: -1px; }
 .seg button:first-child { border-radius: 20px 0 0 20px; margin: 0; }
 .seg button:last-child { border-radius: 0 20px 20px 0; }
 .seg button[aria-pressed="true"] { background: var(--primary-container); color: var(--on-primary-container); }
-
-/* ---- ヘッダー / ナビ ---- */
 .appbar { border-bottom: 1px solid var(--outline); }
 .actions { display: flex; gap: 4px; }
-#app > nav { border-top: 1px solid var(--outline); background: var(--surface); padding: 0 8px env(safe-area-inset-bottom); }
-#app > nav button { position: relative; height: 56px; border-radius: 0; background: transparent; }
+#app > nav { position: fixed; inset: auto 0 0 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border-top: 1px solid var(--outline); background: var(--surface); padding: 0 8px env(safe-area-inset-bottom); }
 #app > nav button[aria-selected="true"] { background: transparent; color: var(--on-surface); }
-#app > nav button[aria-selected="true"]::after {
-  content: ""; position: absolute; left: 50%; bottom: 10px; width: 32px; height: 3px; margin-left: -16px;
-  border-radius: 2px; background: var(--on-surface);
-}
-
-/* ---- 共通 ---- */
-.block { display: grid; gap: 8px; padding: 12px 0; }
+.block { display: grid; }
 .label { margin: 0; color: var(--on-variant); font-size: .875rem; font-weight: 500; }
-button.wide { width: 100%; height: 48px; border-radius: 24px; font-size: 1rem; }
+button.wide { width: 100%; border-radius: 24px; font-size: 1rem; }
 button.small { height: 28px; font-size: .75rem; letter-spacing: .06em; padding: 0 8px; }
 button.icon.sm { width: 28px; height: 28px; }
 button.primary:disabled { background: color-mix(in srgb, var(--on-surface) 12%, transparent); border-color: transparent; color: var(--on-variant); opacity: 1; }
 .big, .timer { font-variant-numeric: tabular-nums; }
-.timer { font-size: 1.75rem; font-weight: 500; margin-bottom: 8px; }
-.grid2 { gap: 16px; }
-
-/* ---- タイマー ---- */
-.slots { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.slot {
-  padding: 10px 0; text-align: center; font-weight: 500; font-variant-numeric: tabular-nums;
-  background: var(--container); color: var(--on-variant);
-  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
-}
+.slots { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); }
+.slot { text-align: center; font-variant-numeric: tabular-nums; background: var(--container); color: var(--on-variant); clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); }
 .slot.on { background: var(--primary-container); color: var(--on-primary-container); }
-
-/* ---- カレンダー ---- */
 .cal-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; text-align: center; }
 .cal-head > button:first-child { justify-self: start; }
 .cal-head > button:last-child { justify-self: end; }
 .cal-title { font-size: 1.75rem; font-weight: 500; margin: 0; }
-.cal { gap: 6px; }
 .cal em { font-style: normal; font-size: .875rem; font-weight: 500; color: var(--on-surface); padding: 8px 0; }
-.day {
-  display: flex; flex-direction: column; justify-content: space-between; align-items: stretch;
-  height: 64px; padding: 6px 8px; border-radius: 8px; background: var(--container); text-align: left;
-}
-.day span { font-size: .75rem; }
-.day b { align-self: flex-end; font-size: 1.125rem; font-weight: 500; }
-.day.sel { outline: 2px solid var(--on-surface); outline-offset: 1px; }
-.note { text-align: center; margin-top: 4px; }
+.day { display: flex; flex-direction: column; justify-content: space-between; align-items: stretch; text-align: left; }
+.day b { align-self: flex-end; }
+.note { text-align: center; }
 .note.warn { text-align: left; }
-
-/* ---- 絆 ---- */
-.bond-row { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px; align-items: end; }
-.bond-row input { font-size: 1.25rem; font-weight: 500; }
-.record { height: 48px; }
-.gifts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 8px; }
-.gift { position: relative; display: grid; justify-items: center; gap: 4px; font-size: .6875rem; text-align: center; }
-.gift img, .gift .ph { width: 48px; height: 48px; border-radius: 12px; object-fit: contain; }
-.gift .ph { display: grid; place-items: center; background: var(--container); font-size: 1.25rem; color: var(--on-variant); }
-.dot { position: absolute; top: 0; left: calc(50% - 30px); width: 10px; height: 10px; border-radius: 50%; }
-.history { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, auto); gap: 4px 24px; }
+.bond-row { display: grid; }
+.gifts { list-style: none; margin: 0; padding: 0; scrollbar-width: none; }
+.gift { display: grid; justify-items: center; font-size: .6875rem; text-align: center; flex: none; }
+.dot { position: absolute; width: 10px; height: 10px; border-radius: 50%; }
+.history { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, auto); }
 .history li { display: flex; align-items: center; gap: 8px; }
 .history .sep { color: var(--outline); }
-.chart { position: relative; height: 260px; }
-
-/* ---- ダイアログ ---- */
-dialog#menu {
-  position: fixed; inset: 0 0 0 auto; margin: 0; height: 100dvh; max-height: none;
-  width: min(88vw, 340px); border-radius: 0; padding: 16px 12px; overflow-y: auto;
-}
-
-/* ---- ゆとりのある余白 + 現行の斜め・欠け角の意匠 ---- */
+.chart { position: relative; }
 .appbar { padding: 18px 24px; }
 #view { max-width: var(--w); padding: 16px 24px 32px; gap: 8px; }
 #ads { width: 100%; max-width: var(--w); margin: 0 auto; padding: 0 24px 12px; }
 .block { gap: 14px; padding: 20px 0; }
 .block + .block { border-top: 1px solid color-mix(in srgb, var(--outline) 60%, transparent); margin-top: 16px; }
-.card { padding: 20px; }
-
-/* 見出しの前に短いアクセントバー */
 .label { display: flex; align-items: center; gap: 8px; letter-spacing: .04em; }
 .label::before { content: ""; width: 3px; height: 14px; border-radius: 2px; background: var(--primary); }
 label.label::before { display: none; }
-
-/* 主要ボタンは平行四辺形 */
 button.primary { border-radius: 0; clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); }
 button.wide { height: 52px; letter-spacing: .06em; }
-.record { padding: 0 28px; }
-.timer { margin-bottom: 14px; }
+.record { padding: 0 28px; white-space: nowrap; }
 .grid2 { gap: 24px; }
 .slots { gap: 10px; margin: 8px 0 12px; }
-.slot { padding: 12px 0; }
-
-.cal { gap: 8px; }
-.day { height: 68px; padding: 8px 10px; border-radius: 0; clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%); }
-.day.sel { outline: none; box-shadow: inset 0 0 0 2px var(--on-surface); }
+.day { border-radius: 0; clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%); }
 .cal-head { margin-bottom: 8px; }
 .note { margin-top: 12px; }
-
-.bond-row { gap: 16px; }
-.gifts { gap: 20px 12px; }
 .history { gap: 10px 32px; }
-.chart { height: 280px; }
-
-dialog#menu { padding: 24px 16px; }
 .menu-head { padding: 8px 12px 20px; }
-.menu-item { height: 52px; }
-hr { margin: 20px 0; }
+hr { border: 0; border-top: 1px solid var(--outline); margin: 20px 0; }
 .seg { margin: 0 12px 4px; }
 .field { padding: 16px 12px 0; }
-#app > nav button { height: 60px; }
-
-/* ---- トランジション (短く控えめに: 100〜200ms) ---- */
-body { transition: background-color .2s, color .2s; }
-button { transition: background-color .15s, color .15s, transform .18s ease-out, opacity .15s; }
+#app > nav button { border: 0; color: var(--on-variant); padding: 0; position: relative; border-radius: 0; background: transparent; height: 60px; }
 button:active:not(:disabled) { transform: translateY(2px) scale(.96); transition-duration: .04s; }
-/* 押した結果で画面が描き直されてもボタンが戻る動きを見せる (app.js の click 処理が付ける) */
 @keyframes rebound { from { transform: translateY(2px) scale(.96); } }
 button.rebound { animation: rebound .22s ease-out; }
 .slot, .day { transition: background-color .2s, color .2s; }
-
-/* タブ・月の切り替え */
 #view.enter { animation: view-in .18s ease-out; }
 @keyframes view-in { from { opacity: 0; transform: translateY(6px); } }
-
-/* ナビの下線 */
-#app > nav button::after {
-  content: ""; position: absolute; left: 50%; bottom: 10px; width: 32px; height: 3px; margin-left: -16px;
-  border-radius: 2px; background: var(--on-surface); transform: scaleX(0); transition: transform .2s;
-}
-#app > nav button[aria-selected="true"]::after { transform: scaleX(1); }
-
-/* ダイアログ: 開閉とも短くフェード (閉じる側は allow-discrete で表示を保つ) */
-dialog, dialog::backdrop {
-  transition: opacity .18s ease, transform .18s ease, overlay .18s allow-discrete, display .18s allow-discrete, background-color .18s;
-}
-dialog { opacity: 0; transform: translateY(12px); }
+#app > nav button::after { content: ""; position: absolute; left: 50%; bottom: 10px; width: 32px; height: 3px; margin-left: -16px; border-radius: 2px; background: var(--on-surface); transform: scaleX(0); transition: transform .2s; }
+#app > nav button[aria-selected="true"]::after { content: ""; position: absolute; left: 50%; bottom: 10px; width: 32px; height: 3px; margin-left: -16px; border-radius: 2px; background: var(--on-surface); transform: scaleX(1); }
+dialog, dialog::backdrop { transition: opacity .18s ease, transform .18s ease, overlay .18s allow-discrete, display .18s allow-discrete, background-color .18s; }
 dialog[open] { opacity: 1; transform: none; }
 dialog::backdrop { background: rgba(0, 0, 0, 0); }
 dialog[open]::backdrop { background: rgba(0, 0, 0, .4); }
-@starting-style {
-  dialog[open] { opacity: 0; transform: translateY(12px); }
-  dialog[open]::backdrop { background: rgba(0, 0, 0, 0); }
-}
-dialog#menu { transform: translateX(24px); }
+@starting-style { dialog[open] { opacity: 0; transform: translateY(12px); } dialog[open]::backdrop { background: rgba(0, 0, 0, 0); } }
+dialog#menu { position: fixed; inset: 0 0 0 auto; margin: 0; height: 100dvh; max-height: none; width: min(88vw, 340px); border-radius: 0; overflow-y: auto; padding: 24px 16px; transform: translateX(24px); }
 dialog#menu[open] { transform: none; }
 @starting-style { dialog#menu[open] { transform: translateX(24px); } }
-
-#toast { animation: toast-in .18s ease-out; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
   .spinner, .btn-spin, .sync { animation-duration: 2s !important; }
 }
-
-/* ---- メニューの調整 ---- */
 .menu-list { gap: 0; }
 .menu-item { height: 40px; }
-.field select { width: 100%; }
 .accent { display: flex; align-items: center; justify-content: space-between; padding: 16px 12px 0; }
 .accent .row { margin: 0; }
-input[type="color"] { width: 44px; height: 32px; padding: 2px; border-radius: 8px; cursor: pointer; }
-
-/* ---- タイマーの数字を太く大きく ---- */
 .big { font-size: clamp(2.75rem, 15vw, 4rem); font-weight: 500; line-height: 1.1; letter-spacing: .06em; }
 .timer { font-size: clamp(1.5rem, 7vw, 2rem); font-weight: 500; margin-bottom: 14px; letter-spacing: .06em; }
 .slot { font-size: 1.0625rem; font-weight: 500; letter-spacing: .04em; }
-
-/* ---- スクロールバーは表示しない ---- */
 html, body, dialog { scrollbar-width: none; }
 html::-webkit-scrollbar, body::-webkit-scrollbar, dialog::-webkit-scrollbar { display: none; }
-
-/* ---- 中央寄せ ---- */
 .appbar { padding-inline: max(24px, calc((100vw - var(--w)) / 2)); }
-
-/* ---- 入力欄を小さく細く ---- */
 input { height: 40px; font-size: .9375rem; border-radius: 8px; background: var(--container); border-color: transparent; }
-.bond-row input { font-size: 1rem; }
+.bond-row input { font-weight: 500; font-size: 1rem; }
 .record { height: 40px; }
-input[type="color"] { height: 32px; }
-
-/* ---- 独自ドロップダウン ---- */
+input[type="color"] { width: 44px; padding: 2px; border-radius: 8px; cursor: pointer; height: 32px; }
 .dd { position: relative; display: inline-block; max-width: 100%; }
-.dd-btn {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  height: 36px; min-width: 160px; max-width: 100%; padding: 0 10px 0 14px;
-  border: 1px solid var(--outline); border-radius: 8px; color: var(--on-surface); font-weight: 500;
-}
+.dd-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 36px; min-width: 160px; max-width: 100%; padding: 0 10px 0 14px; border: 1px solid var(--outline); border-radius: 8px; color: var(--on-surface); font-weight: 500; }
 .dd-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dd-btn svg { color: var(--on-variant); }
-.dd-list {
-  position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; max-width: 80vw;
-  max-height: 240px; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
-  background: var(--container); border: 1px solid var(--outline); border-radius: 8px;
-  animation: view-in .12s ease-out;
-}
-.dd-list button {
-  display: block; width: 100%; height: 36px; padding: 0 12px; border: 0; border-radius: 6px;
-  text-align: left; color: var(--on-surface); font-weight: 400; white-space: nowrap;
-}
+.dd-btn svg { color: var(--on-variant); transition: transform .15s; }
+.dd-list { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; max-width: 80vw; max-height: 240px; overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: var(--container); border: 1px solid var(--outline); border-radius: 8px; }
+.dd-list button { display: block; width: 100%; height: 36px; padding: 0 12px; border: 0; border-radius: 6px; text-align: left; color: var(--on-surface); font-weight: 400; white-space: nowrap; }
 .dd-list button[aria-selected="true"] { background: var(--primary-container); color: var(--on-primary-container); }
 .field .dd, .field .dd-btn { width: 100%; }
-.field .dd-list { width: 100%; }
 .field { display: grid; gap: 6px; font-size: .8125rem; color: var(--on-variant); }
-
-/* ---- キャラ選択: 現行に寄せた大きな名前 + 三角 ---- */
-.dd-btn svg { transition: transform .15s; }
 .dd-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
-.dd.lg .dd-btn {
-  height: auto; min-width: 0; padding: 0; border: 0; border-radius: 0; gap: 8px; justify-content: flex-start;
-  font-size: 2rem; font-weight: 700; line-height: 1.3; background: transparent;
-}
+.dd.lg .dd-btn { height: auto; min-width: 0; padding: 0; border: 0; border-radius: 0; gap: 8px; justify-content: flex-start; font-size: 2rem; font-weight: 700; line-height: 1.3; background: transparent; }
 .dd.lg .dd-btn:hover:not(:disabled) { background: transparent; }
 .dd.lg .dd-btn svg { color: var(--on-variant); margin-top: 6px; }
 .dd.lg .dd-list { min-width: 260px; max-height: 320px; padding: 8px; border-radius: 12px; }
 .dd.lg .dd-list button { height: 44px; padding: 0 16px; border-radius: 10px; font-weight: 700; }
-
-.indent { padding-left: 14px; }
-
-/* ---- Favorite Gifts: スプライト画像 ---- */
-.gifts { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 16px 8px; }
-.gift-img {
-  --s: .45;
-  display: block; margin: 0 auto;
-  width: calc(142px * var(--s)); height: calc(112px * var(--s));
-  background: url("/img/gifts.png") no-repeat;
-  background-size: calc(710px * var(--s)) calc(1344px * var(--s));
-  background-position: calc(var(--x) * var(--s) * -1px) calc(var(--y) * var(--s) * -1px);
-}
+.gift-img { display: block; margin: 0 auto; width: calc(142px * var(--s)); height: calc(112px * var(--s)); background: url("/img/gifts.png") no-repeat; background-size: calc(710px * var(--s)) calc(1344px * var(--s)); background-position: calc(var(--x) * var(--s) * -1px) calc(var(--y) * var(--s) * -1px); --s: .36; }
 .dot { top: 0; left: calc(50% - 32px); }
-
-/* ---- Favorite Gifts: カード型 ---- */
-.gifts { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
-.gift {
-  gap: 2px; padding: 10px 6px 8px; background: var(--container);
-  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
-}
-.gift-img { --s: .6; }
-.gift-cat { margin-top: 4px; font-size: .75rem; font-weight: 500; color: var(--on-surface); }
-
-/* ---- 贈物: さらに小さく、倍率の数字は出さず色の点だけ ---- */
-.gifts { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
-.gift { position: relative; padding: 8px 4px 6px; gap: 0; }
-.gift-img { --s: .45; }
-.gift-cat { margin-top: 2px; font-size: .6875rem; }
-.gift .dot { top: 8px; left: 8px; width: 8px; height: 8px; }
-
-/* ---- 横長の画面 (PC): 2カラム ---- */
+.gift { background: var(--container); clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); position: relative; gap: 0; }
+.gift-cat { font-weight: 500; color: var(--on-surface); margin-top: 2px; }
 .cols { display: grid; }
 @media (min-width: 900px) and (orientation: landscape) {
-  :root { --w: 1600px; }
-  .cols { grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
+  .cols { align-items: start; }
   #app > nav button[data-tab="calendar"] { display: none; }
-  .chart { height: 380px; }
 }
-
-/* ---- 贈物: 間隔を詰め、溢れた分は横スクロール ---- */
-.gifts { display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 2px; }
-.gift { flex: none; width: 68px; }
-
-/* ---- テキストは選択・コピーできない (入力欄は除く) ---- */
-body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-/* スマホでタップしたときの青いハイライトを出さない */
-* { -webkit-tap-highlight-color: transparent; }
+.gifts { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 2px; mask-image: linear-gradient(to right, transparent, #000 var(--fl), #000 calc(100% - var(--fr)), transparent); transition: --fl .2s, --fr .2s; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 input, textarea { -webkit-user-select: text; user-select: text; }
 img, svg { -webkit-user-drag: none; }
-
-/* ---- 贈物の横スクロールバーは表示しない ---- */
-.gifts { scrollbar-width: none; }
 .gifts::-webkit-scrollbar { display: none; }
-
-/* ---- 画面幅が変わっても縦横比を保つ (固定の高さをやめ、比率で決める) ---- */
 .slot { padding: 0; aspect-ratio: 7 / 3; display: grid; place-items: center; }
-.day { height: auto; aspect-ratio: 1 / 1.1; }
+.day { height: auto; aspect-ratio: 1 / 1.1; min-width: 0; overflow: hidden; }
 .chart, .chart:where(*) { height: auto; aspect-ratio: 5 / 4; }
 @media (min-width: 900px) and (orientation: landscape) {
   .chart { height: auto; }
 }
-
-/* ---- スマホでカレンダーがはみ出さないようにする ---- */
 .cal { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
-.day { min-width: 0; padding: 4px 6px; overflow: hidden; }
-.day b { font-size: 1rem; }
 @media (min-width: 600px) {
   .cal { gap: 8px; }
-  .day { padding: 8px 10px; }
 }
-
-/* ---- 贈物: 続きがあることを示す ---- */
 .gifts-wrap { position: relative; }
-.gifts-nav {
-  position: absolute; top: 50%; transform: translateY(-50%); z-index: 1;
-  width: 32px; height: 32px; padding: 0; border-radius: 50%; display: grid; place-items: center;
-  background: var(--container); border-color: var(--outline); color: var(--on-surface);
-}
-input[type="checkbox"]:focus, input[type="checkbox"]:focus-visible { outline: none; }
 .gifts-nav:active:not(:disabled) { transform: translateY(-50%) scale(.94); }
 .gifts-nav.prev { left: 0; }
 .gifts-nav.prev svg { transform: scaleX(-1); }
 .gifts-nav.next { right: 0; }
-
-/* ---- 横スクロールする一覧が親の幅を押し広げないようにする ---- */
-#view { grid-template-columns: minmax(0, 1fr); }
 .cols { grid-template-columns: minmax(0, 1fr); }
 .cols > *, .block, .gifts-wrap { min-width: 0; }
-html { overflow-x: clip; }
-@media (min-width: 900px) and (orientation: landscape) {
-  .cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-}
-
-/* ---- 贈物の矢印とぼかしは滑らかに出し入れする ---- */
 @property --fl { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @property --fr { syntax: "<length>"; inherits: false; initial-value: 0px; }
-.gifts {
-  mask-image: linear-gradient(to right, transparent, #000 var(--fl), #000 calc(100% - var(--fr)), transparent);
-  transition: --fl .2s, --fr .2s;
-}
 .gifts[data-fade*="l"] { --fl: 56px; }
 .gifts[data-fade*="r"] { --fr: 56px; }
-.gifts-nav { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .2s, visibility .2s, transform .1s, background-color .15s; }
+.gifts-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; width: 32px; height: 32px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: var(--container); border-color: var(--outline); color: var(--on-surface); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .2s, visibility .2s, transform .1s, background-color .15s; }
 .gifts-nav.show { opacity: 1; visibility: visible; pointer-events: auto; }
-
-/* ---- カレンダー: タップ数 1〜8 を GitHub の草のように段階表示。ホバーでは色を変えない ---- */
-.day { --day-bg: color-mix(in srgb, var(--primary) calc(var(--lv, 0) * 12.5%), var(--container)); background: var(--day-bg); }
+.day { background: var(--day-bg); }
 .day:hover:not(:disabled) { background: var(--day-bg); }
-/* 視認性のため、背景の濃さは最大でも約64%に抑え、文字色は全段階で通常の文字色に固定する */
-.day { --day-bg: color-mix(in srgb, var(--primary) calc(var(--lv, 0) * 8%), var(--container)); }
 .day, .day span, .day b { color: var(--on-surface); }
-.day span { font-size: .8125rem; font-weight: 500; }
-.day b { font-size: 1.25rem; font-weight: 700; }
-.day.sel { outline-width: 3px; }
-
-/* ---- メニューのページ本文 (js/docs.js) ---- */
+.day span { font-weight: 500; }
+.day b { font-weight: 700; }
+.day.sel { outline-offset: 1px; outline: none; box-shadow: inset 0 0 0 2px var(--on-surface); outline-width: 3px; }
 .doc { font-size: .9375rem; line-height: 1.6; }
 .doc h2 { font-size: 1.25rem; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--outline); }
 .doc h3 { margin: 6px 0 0; font-size: 1rem; line-height: 1.5; }
@@ -532,36 +238,20 @@ html { overflow-x: clip; }
 .doc .log li { display: flex; gap: 12px; font-size: .875rem; }
 .doc .log span { flex: none; width: 6.5em; color: var(--on-variant); font-variant-numeric: tabular-nums; }
 .doc .log small { display: block; margin-top: 2px; font-size: .8125rem; }
-
-/* ---- 閉じるボタンは右下に常時表示 ---- */
-
-/* ---- ドロップダウンの開閉トランジション (閉じるときも動かすため hidden は使わない) ---- */
-.dd-list {
-  animation: none; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-4px);
-  transition: opacity .15s ease, transform .15s ease, visibility .15s;
-}
+.dd-list { animation: none; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-4px); transition: opacity .15s ease, transform .15s ease, visibility .15s; }
 .dd-list.open { opacity: 1; visibility: visible; pointer-events: auto; transform: none; }
-
-/* ---- スマホ: 絆の入力行がはみ出さないようにする ---- */
-.bond-row { grid-template-columns: 72px minmax(0, 1fr) auto; }
 .bond-row label, .bond-row input { min-width: 0; width: 100%; }
 .bond-row input[type="date"] { appearance: none; -webkit-appearance: none; }
-.record { white-space: nowrap; }
 @media (max-width: 480px) {
-  .bond-row { gap: 10px; }
   .record { padding: 0 20px; }
   #view, #ads { padding-inline: 16px; }
   .appbar { padding-inline: 16px; }
 }
-
-/* ---- スマホでも Next Call は横2列 ---- */
 .grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 480px) {
   .grid2 { gap: 12px; }
   .grid2 .timer { font-size: clamp(1.25rem, 6vw, 1.75rem); }
 }
-
-/* ---- スマホ: 縦方向を詰める ---- */
 @media (max-width: 600px) {
   body { font-size: 14px; --nav-space: calc(60px + env(safe-area-inset-bottom)); }
   .appbar { padding-block: 10px; font-size: 1.125rem; }
@@ -574,52 +264,36 @@ html { overflow-x: clip; }
   button.wide { height: 40px; font-size: .9375rem; }
   .grid2 { gap: 10px; }
   .dd.lg .dd-btn { font-size: 1.5rem; }
-  .gift { width: 60px; padding: 6px 2px 4px; }
   .chart, .chart:where(*) { aspect-ratio: 4 / 3; }
   .history { gap: 0 20px; }
   .history li { min-height: 28px; }
   .history button.icon { height: 28px; width: 32px; }
-  /* 絆画面: グループ間の余白を詰める */
   .cols .block { gap: 6px; padding: 8px 0; }
   .cols .block + .block { margin-top: 0; }
   .cols .gifts { padding-bottom: 0; }
   #app > nav button { height: 60px; }
   #app > nav button::after, #app > nav button[aria-selected="true"]::after { bottom: 10px; }
-  #toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
 }
-
-/* ---- デスクトップ: 下のタブは中央に寄せ、アイコン同士を近づける ---- */
 @media (min-width: 601px) {
   #app > nav { grid-auto-columns: 112px; justify-content: center; }
-  /* 押せる範囲は左右いっぱいに: 両端のボタンの当たり判定を画面の端まで伸ばす */
   #app > nav button:first-child::before, #app > nav button:last-child::before { content: ""; position: absolute; top: 0; bottom: 0; width: 50vw; }
   #app > nav button:first-child::before { right: 100%; }
   #app > nav button:last-child::before { left: 100%; }
 }
-
-/* ---- スマホ: 持ったときの誤タップを避けるため左右の余白を広げる ---- */
 @media (max-width: 600px) {
   #view, #ads { padding-inline: 28px; }
   .appbar { padding-inline: 28px; }
   #app > nav { padding-inline: 20px; }
-  #toast { left: 28px; right: 28px; }
+  #toast { bottom: calc(76px + env(safe-area-inset-bottom)); left: 28px; right: 28px; }
 }
-
-/* ---- 青いバーの位置を絆画面と揃える。数字はラベルの文字の位置に合わせる ---- */
 .indent { padding-left: 11px; }
-
-/* ---- ハンバーガーボタンを右端寄りに / スマホのメニューを細く ---- */
 .actions { margin-right: -10px; }
 @media (max-width: 600px) {
   dialog#menu { width: min(72vw, 280px); padding: 20px 12px; }
 }
-
-/* ---- メニューのアクセントカラー: 狭くても改行しない ---- */
 .accent { gap: 8px; white-space: nowrap; }
 .accent .row { flex-wrap: nowrap; gap: 4px; flex: none; }
 .accent .ghost { padding: 0 8px; }
-
-/* ---- 2行ラベル (タイムゾーンなど): 本文 + 小さな補足 ---- */
 .dd-btn span:has(.l1), .dd-list button:has(.l1) { line-height: 1.25; }
 .dd .paren { font-size: .75em; }
 .dd-list li[hidden] { display: none; }
@@ -631,22 +305,15 @@ html { overflow-x: clip; }
 .dd-btn:has(.l1) > span { min-width: 0; }
 .dd-list button:has(.l1) { height: auto; min-height: 44px; padding-block: 6px; }
 .dd-list button[aria-selected="true"] .l2 { color: inherit; opacity: .75; }
-.field .dd-list { max-width: 100%; }
-
-/* ---- 確認ダイアログ ---- */
+.field .dd-list { width: 100%; max-width: 100%; }
 dialog#confirm { width: min(88vw, 360px); margin: auto; padding: 24px; }
 #confirm-msg { line-height: 1.7; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 #confirm-ok.danger { background: var(--error); color: var(--surface); }
 #confirm button.primary { clip-path: none; border-radius: 24px; }
 #confirm-cancel { border-radius: 24px; }
-.gift-cat { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* ---- ヘッダーのタイトル (タイマーへ戻る) ---- */
 button.home { height: auto; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 button.home:hover:not(:disabled) { background: transparent; }
-
-/* ---- カレンダー: 文字を端から離す (PC/スマホ共通) ---- */
 .day { padding: 10px 12px 8px; line-height: 1.1; }
 .day span { font-size: .75rem; }
 .day b { font-size: 1.0625rem; }
@@ -655,12 +322,9 @@ button.home:hover:not(:disabled) { background: transparent; }
   .day span { font-size: .6875rem; }
   .day b { font-size: 1rem; }
 }
-
-/* ---- 小さい端末 (iPhone SE など): 折り返し・欠けを防ぐ ---- */
 @media (max-width: 400px) {
   #view, #ads, .appbar { padding-inline: 20px; }
   #toast { left: 20px; right: 20px; }
-  .bond-row { grid-template-columns: 60px minmax(0, 1fr) auto; gap: 8px; }
   .bond-row input { font-size: .875rem; padding-inline: 8px; }
   .record { padding: 0 14px; font-size: .875rem; }
   .history { gap: 0 12px; }
@@ -668,39 +332,23 @@ button.home:hover:not(:disabled) { background: transparent; }
   .history button.icon { width: 28px; }
   .cal-title { font-size: 1.5rem; }
 }
-
-/* ---- 贈物ボックス: さらに小さく ---- */
 .gift { width: 56px; padding: 6px 3px 4px; }
-.gift-img { --s: .36; }
-.gift-cat { font-size: .625rem; }
+.gift-cat { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .625rem; }
 .gift .dot { top: 6px; left: 6px; width: 7px; height: 7px; }
 @media (max-width: 600px) {
   .gift { width: 52px; padding: 5px 2px 4px; }
 }
-
-/* ---- 縦並びのとき、History Log と Progress Graph の間にも区切り線 (別の div にあるため + で届かない) ---- */
 @media not all and (min-width: 900px) and (orientation: landscape) {
   .cols > div + div > .block { border-top: 1px solid color-mix(in srgb, var(--outline) 60%, transparent); }
 }
-
-/* ---- ピンチ・ダブルタップによる拡大を無効化 (スクロールは可) ---- */
-html { touch-action: pan-x pan-y; }
-
-/* ---- ログイン前の画面: 言語・About・公式サイト ---- */
+html { overflow-x: clip; touch-action: pan-x pan-y; }
 .login-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; margin-top: 8px; }
 .login-links a { color: var(--primary); font-size: .875rem; }
 dialog#about { padding: 24px 20px; overflow-y: auto; }
 dialog#about .confirm-actions { margin-top: 16px; }
-
-/* ---- アップデートのお知らせ ---- */
-.update-main { margin: 4px 0 0; font-weight: 700; line-height: 1.5; }
-/* 以前の項目は、一覧の中だけでスクロールさせる */
-
-/* ---- PC (横長の画面): 幅は程よい大きさまでにして、縦はスクロールしない範囲に収める ---- */
 @media (min-width: 900px) and (orientation: landscape) {
   :root { --cal-w: clamp(440px, calc((100dvh - 470px) * 1.06 + 48px), 700px); --w: calc(560px + 72px + var(--cal-w) + 48px); }
   #view { padding-block: 4px 8px; }
-  /* 左のタイマーは最大 560px、右のカレンダーは1日の縦横比 (1 : 1.1) を保てる幅 (画面の高さで決まる) にして中央に寄せる */
   .cols { grid-template-columns: minmax(0, 560px) var(--cal-w); justify-content: center; gap: 72px; }
   .block { padding: 10px 0; gap: 12px; }
   .block + .block { margin-top: 8px; }
@@ -708,74 +356,46 @@ dialog#about .confirm-actions { margin-top: 16px; }
   .cal-head { margin-bottom: 0; }
   .cal { gap: 8px; margin-top: 0; }
   .cal em { padding: 4px 0; }
-}
-
-/* 絆の画面: タイマー画面と同じ最大幅のまま、入力側は細めにしてグラフを大きく (高さは画面に収まる範囲) */
-@media (min-width: 900px) and (orientation: landscape) {
-  .cols.bond-cols { grid-template-columns: minmax(0, 440px) minmax(0, 1fr); } /* 全体の幅はタイマー画面と同じ (--w) */
+  .cols.bond-cols { grid-template-columns: minmax(0, 440px) minmax(0, 1fr); }
   .bond-cols .chart { aspect-ratio: auto; height: clamp(320px, calc(100dvh - 300px), 640px); }
 }
-
-/* 縦が低い画面(小さなノートPCなど)は、少し小さめにして収まりやすくする */
 @media (min-width: 900px) and (orientation: landscape) and (max-height: 820px) {
   :root { --cal-w: clamp(380px, calc((100dvh - 390px) * 1.06 + 48px), 700px); --w: calc(560px + 72px + var(--cal-w) + 48px); }
   .slot { aspect-ratio: 7 / 2; }
 }
-
-/* ---- 生徒アイコン (ドロップダウンの名前の左) ---- */
 .dd-icon { width: 1.6em; height: 1.6em; margin-right: .5em; object-fit: cover; vertical-align: middle; flex: none; }
 .dd-list button:has(.dd-icon) { display: flex; align-items: center; }
 .dd-btn span:has(.dd-icon) { display: inline-flex; align-items: center; }
-
-/* ---- 絆: アイコンを左に、名前・Rank・Date・Record をその右に ---- */
 .bond-head { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; align-items: center; }
 .bond-head:not(:has(.bond-icon)) { grid-template-columns: minmax(0, 1fr); }
 .bond-icon { width: 96px; height: 96px; object-fit: cover; }
 .bond-fields { display: grid; gap: 8px; min-width: 0; }
-/* Rank / Date は「ラベル 入力枠」を縦に2行。Record ボタンは右に2行ぶんの高さで置く */
 .bond-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; margin-bottom: 4px; }
 .bond-row label { grid-column: 1; grid-template-columns: 3em minmax(0, 1fr); align-items: center; gap: 0 8px; }
 .bond-row input { height: 32px; min-width: 0; }
-.bond-row .record { grid-column: 2; grid-row: 1 / span 2; align-self: stretch; padding: 0 16px; height: auto; }
 @media (max-width: 480px) {
   .bond-head { grid-template-columns: 72px minmax(0, 1fr); gap: 12px; }
   .bond-icon { width: 72px; height: 72px; }
   .bond-row { gap: 6px 8px; }
   .bond-row label { grid-template-columns: 2.6em minmax(0, 1fr); gap: 0 6px; }
   .bond-row input { padding-inline: 6px; font-size: .875rem; }
-  .bond-row .record { padding: 0 12px; font-size: .8125rem; }
 }
-.bond-row .record { padding: 0 20px; font-size: 1.25rem; font-weight: 500; }
-/* 送信中の Record (+) ボタン: 文字の代わりに回転アイコン */
+.bond-row .record { grid-column: 2; grid-row: 1 / span 2; align-self: stretch; height: auto; padding: 0 20px; font-size: 1.25rem; font-weight: 500; }
 .bond-row .record.busy { font-size: 0; position: relative; }
-.bond-row .record.busy::after {
-  content: ""; position: absolute; inset: 0; margin: auto; width: 18px; height: 18px; border-radius: 50%;
-  border: 3px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor;
-  animation: spin .8s linear infinite;
-}
-/* デモ画面で押せない操作 (見た目は変えず、カーソルだけ示す) */
+.bond-row .record.busy::after { content: ""; position: absolute; inset: 0; margin: auto; width: 18px; height: 18px; border-radius: 50%; border: 3px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; }
 [data-demo-off], [data-demo-off] * { cursor: not-allowed !important; }
-/* インポート (label.menu-item) も、ほかのボタンと同じ押した感じ・フォーカス表示にする */
 label.menu-item { transition: background-color .15s, transform .18s ease-out; }
 label.menu-item:active { transform: translateY(2px) scale(.96); transition-duration: .04s; }
 label.menu-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-/* ログイン前: 言語選択は1行めに置き、About・使い方ガイド・公式サイトを2行めに並べる */
 #login-lang { flex-basis: 100%; display: flex; justify-content: center; }
-/* 公式サイトのリンクも、隣の About / 使い方ガイド (ghost ボタン) と同じ見た目にする */
-#site-link {
-  display: inline-flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 20px;
-  font: 500 .875rem var(--font); text-decoration: none; transition: background-color .15s;
-}
+#site-link { display: inline-flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 20px; font: 500 .875rem var(--font); text-decoration: none; transition: background-color .15s; }
 #site-link:hover { background: color-mix(in srgb, var(--primary) 10%, transparent); }
-/* カレンダーの年月 (1つの一覧から選んで飛ぶ) */
 .cal-title { display: flex; justify-content: center; }
 .cal-title .dd.lg .dd-btn { font-size: 1.75rem; font-weight: 500; line-height: 1.3; }
 .cal-title .dd.lg .dd-btn svg { display: none; }
 .cal-title .dd.lg .dd-list { min-width: 160px; max-height: 280px; left: 50%; transform: translateX(-50%); }
 .cal-title .dd.lg .dd-list.open { transform: translateX(-50%); }
 .cal-title .dd.lg .dd-list button { justify-content: center; font-weight: 500; }
-
-/* 更新のお知らせ: ヘッダーに続く1本のバー。上段=ラベルと日付、下段=タイトル (はみ出しは三点リーダ) */
 #notice { border-block: 1px solid var(--outline); background: var(--container); }
 .notice { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; width: 100%; max-width: 640px; margin: 0 auto; padding: 6px 28px 7px; border: 0; border-radius: 0; background: none; color: var(--on-surface); text-align: left; font: inherit; clip-path: none; }
 .notice-head { grid-column: 1; display: flex; align-items: baseline; gap: 8px; font-size: .75rem; line-height: 1.3; color: var(--on-variant); }
@@ -783,8 +403,6 @@ label.menu-item:focus-visible { outline: 2px solid var(--primary); outline-offse
 .notice-head time { font-variant-numeric: tabular-nums; }
 .notice-title { grid-column: 1; min-width: 0; font-size: .875rem; font-weight: 500; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notice svg { grid-column: 2; grid-row: 1 / span 2; fill: var(--on-variant); }
-
-/* 読み込み中の仮の画面 */
 .sk { border-radius: 12px; background: linear-gradient(90deg, var(--container) 25%, color-mix(in srgb, var(--outline) 45%, var(--container)) 50%, var(--container) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
 .sk-label { height: 16px; width: 88px; border-radius: 8px; }
 .sk-big { height: clamp(3.025rem, 16.5vw, 4.4rem); width: 72%; margin-left: 14px; }
@@ -792,25 +410,13 @@ label.menu-item:focus-visible { outline: 2px solid var(--primary); outline-offse
 .sk-btn { height: 52px; border-radius: 26px; }
 .slot.sk { color: transparent; }
 @keyframes shimmer { to { background-position: -200% 0; } }
-@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
-
-/* 処理中のボタン: 文字の代わりに回転アイコン */
-.btn-spin {
-  display: inline-block; width: 18px; height: 18px; vertical-align: middle; border-radius: 50%;
-  border: 2.5px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor;
-  animation: spin .8s linear infinite;
+@media (prefers-reduced-motion: reduce) {
+  .sk { animation: none; }
 }
-/* ヘッダーの同期中表示: まだサーバーに届いていない操作があるときだけ、小さく回す。
-   送れずに再送待ちのときは止めて薄い点にする */
-.sync {
-  align-self: center; width: 14px; height: 14px; margin-right: 6px; border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--on-variant) 25%, transparent); border-top-color: var(--on-variant);
-  opacity: .7; animation: spin 1.2s linear infinite;
-}
+.btn-spin { display: inline-block; width: 18px; height: 18px; vertical-align: middle; border-radius: 50%; border: 2.5px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; }
+.sync { align-self: center; width: 14px; height: 14px; margin-right: 6px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--on-variant) 25%, transparent); border-top-color: var(--on-variant); opacity: .7; animation: spin 1.2s linear infinite; }
 .sync[hidden] { display: none; }
 .sync.waiting { animation: none; border-color: var(--on-variant); opacity: .45; width: 8px; height: 8px; margin-inline: 3px 9px; }
-
-/* ---- 広告: #view が残りの高さを埋めるので、画面に余裕があればナビの上、なければ内容の下に来る ---- */
 #app:not([hidden]) { display: flex; flex-direction: column; min-height: calc(100dvh - var(--nav-space)); }
 #view { flex: 1 0 auto; width: 100%; align-content: start; }
 .ads { padding-top: 12px; display: grid; gap: 4px; min-width: 0; }
