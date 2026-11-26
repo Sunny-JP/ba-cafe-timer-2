@@ -27,7 +27,7 @@
   "tapQueued": "기기에 저장했습니다. 재인증 후 기록됩니다",
   "confirmDelBond": "이 기록을 삭제할까요?",
   "confirmLogout": "로그아웃할까요?",
-  "confirmDelAccount": "Drive의 모든 데이터와 알림 설정을 삭제합니다. 되돌릴 수 없습니다.",
+  "confirmDelAccount": "Drive의 모든 데이터, 알림 설정, 로그인용 계정 정보를 삭제합니다. 되돌릴 수 없습니다.",
   "del": "삭제",
   "logout": "로그아웃",
   "deleted": "삭제했습니다",

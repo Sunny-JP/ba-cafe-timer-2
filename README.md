@@ -63,7 +63,7 @@ doc/                        仕様書・設計書
 
 1. Firebase プロジェクトで Authentication(Google)・Firestore(ルール全拒否)・Cloud Messaging を有効化します。Google Cloud で Drive API を有効化し、OAuth 同意画面に `drive.appdata` を追加します。
 2. 公開設定を [public/js/config.js](public/js/config.js) に書きます(`firebaseConfig`、`GOOGLE_CLIENT_ID`、`VAPID_KEY`)。`wrangler.toml` の `FIREBASE_PROJECT_ID` も合わせます。
-3. Worker 専用のサービスアカウントを作り、「Cloud Datastore ユーザー」「Firebase Cloud Messaging API 管理者」「Firebase Authentication 閲覧者」のロールを付けて、鍵(JSON)を登録します。
+3. Worker 専用のサービスアカウントを作り、「Cloud Datastore ユーザー」「Firebase Cloud Messaging API 管理者」「Firebase Authentication 管理者」のロールを付けて、鍵(JSON)を登録します。
    - 本番: `Get-Content <鍵.json> -Raw | npx wrangler secret put FIREBASE_SERVICE_ACCOUNT`(登録後、鍵のファイルは削除します)
    - ローカル: `.dev.vars` に `FIREBASE_SERVICE_ACCOUNT='<JSON を 1 行にしたもの>'`
 4. Drive の認証を維持するための秘密情報を登録します(本番は `npx wrangler secret put <名前>`、ローカルは `.dev.vars`)。

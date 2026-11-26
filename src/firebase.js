@@ -233,6 +233,11 @@ export async function isAccountActive(env, uid, issuedAt) {
   return !!user && !user.disabled && issuedAt >= Number(user.validSince ?? 0);
 }
 
+async function deleteAuthUser(env, uid) {
+  const response = await identityToolkit(env, "accounts:delete", { localId: uid });
+  if (!response.ok) throw new Error(`identitytoolkit ${response.status}`);
+}
+
 // ---- 通知の予約 (pending/{uid}_{タップ ID}) ----
 
 const pendingPath = (uid, id) => `/pending/${uid}_${id}`;
@@ -258,7 +263,7 @@ async function deleteDocument(env, name) {
   await fetch(`https://firestore.googleapis.com/v1/${name}`, { method: "DELETE", headers: { Authorization: `Bearer ${await serviceToken(env)}` } });
 }
 
-// アカウント削除: 統計の自分の分・端末・Drive 連携・予約を消す
+// アカウント削除: 統計の自分の分・端末・Drive 連携・予約を消し、最後に Auth のアカウントも消す
 export async function deleteUserData(env, uid) {
   const contribution = await getBondStats(env, uid);
   await addCounts(env, Object.fromEntries(Object.entries(contribution).map(([statKey, count]) => [statKey, -count])));
@@ -267,6 +272,7 @@ export async function deleteUserData(env, uid) {
   await deleteDriveAuth(env, uid);
   const pending = await queryPending(env, { fieldFilter: { field: { fieldPath: "uid" }, op: "EQUAL", value: { stringValue: uid } } });
   for (const item of pending) await deleteDocument(env, item.name);
+  await deleteAuthUser(env, uid);
 }
 
 // ---- 通知の送信 ----

@@ -27,7 +27,7 @@
   "tapQueued": "再認証後に記録します(タップは端末に保存済み)",
   "confirmDelBond": "この記録を削除しますか?",
   "confirmLogout": "ログアウトしますか?",
-  "confirmDelAccount": "Drive 上の全データと通知設定を削除します。元に戻せません。",
+  "confirmDelAccount": "Drive 上の全データ・通知設定・ログイン用のアカウント情報を削除します。元に戻せません。",
   "del": "削除",
   "logout": "ログアウト",
   "deleted": "削除しました",

@@ -27,7 +27,7 @@
   "tapQueued": "已保存在本设备，重新授权后将记录",
   "confirmDelBond": "要删除这条记录吗？",
   "confirmLogout": "要退出登录吗？",
-  "confirmDelAccount": "将删除 Drive 上的全部数据和通知设置，且无法恢复。",
+  "confirmDelAccount": "将删除 Drive 上的全部数据、通知设置和本站的登录账号信息，且无法恢复。",
   "del": "删除",
   "logout": "退出登录",
   "deleted": "已删除",

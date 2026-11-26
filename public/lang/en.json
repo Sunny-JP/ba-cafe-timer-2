@@ -27,7 +27,7 @@
   "tapQueued": "Saved on this device; it will be recorded after you re-authenticate",
   "confirmDelBond": "Delete this record?",
   "confirmLogout": "Sign out?",
-  "confirmDelAccount": "This deletes all your data on Drive and your notification settings. This cannot be undone.",
+  "confirmDelAccount": "This deletes all your data on Drive, your notification settings and your sign-in account for this site. This cannot be undone.",
   "del": "Delete",
   "logout": "Sign out",
   "deleted": "Deleted",

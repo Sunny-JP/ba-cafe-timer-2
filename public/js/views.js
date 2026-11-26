@@ -269,7 +269,7 @@ export function renderBond(state) {
           <div class="bond-row">
             <label>Rank <input name="bond_level" type="number" inputmode="numeric" min="1" max="${BOND_MAX}" value="${level}" required></label>
             <label>Date <input name="recorded_at" type="date" value="${esc(date)}" required></label>
-            <button class="primary record" aria-label="Record">+</button>
+            <button class="primary record${state.syncing ? " busy" : ""}" aria-label="Record"${state.syncing ? " disabled" : ""}>+</button>
           </div>
         </div>
       </div>
