@@ -85,7 +85,7 @@ async function requestServiceToken(env) {
 
 const documentsUrl = (env) => `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-// 404 は呼び出し側で「無い」と扱う
+// 404 は例外にせず、呼び出し側で判定する
 async function firestore(env, path, init = {}) {
   const response = await fetch(`${documentsUrl(env)}${path}`, {
     ...init,
@@ -95,31 +95,38 @@ async function firestore(env, path, init = {}) {
   return response;
 }
 
+// 無いドキュメントを GET すると、ログに 404 のエラーとして残るので batchGet で読む。無いものは結果に含めない
+async function getDocuments(env, paths) {
+  const documents = paths.map((path) => `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents${path}`);
+  const response = await firestore(env, ":batchGet", { method: "POST", body: JSON.stringify({ documents }) });
+  if (!response.ok) throw new Error(`firestore ${response.status}`);
+  return (await response.json()).flatMap((row) => row.found ?? []);
+}
+
+const getDocument = async (env, path) => (await getDocuments(env, [path]))[0] ?? null;
+
 const writeJsonField = (env, path, value) =>
   firestore(env, path, { method: "PATCH", body: JSON.stringify({ fields: { json: { stringValue: JSON.stringify(value) } } }) });
 
 async function readJsonField(env, path, fallback) {
-  const response = await firestore(env, path);
-  if (response.status === 404) return fallback;
+  const document = await getDocument(env, path);
   try {
-    return JSON.parse((await response.json()).fields?.json?.stringValue ?? "null") ?? fallback;
+    return JSON.parse(document?.fields?.json?.stringValue ?? "null") ?? fallback;
   } catch {
     return fallback;
   }
 }
 
 export async function getDevices(env, uid) {
-  const response = await firestore(env, `/devices/${uid}`);
-  if (response.status === 404) return [];
-  return readTokens(await response.json());
+  const document = await getDocument(env, `/devices/${uid}`);
+  return document ? readTokens(document) : [];
 }
 
 const readTokens = (document) => (document.fields?.tokens?.arrayValue?.values ?? []).map((value) => value.stringValue);
 
 async function getDevicesByUser(env, uids) {
-  const documents = uids.map((uid) => `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/devices/${uid}`);
-  const rows = await (await firestore(env, ":batchGet", { method: "POST", body: JSON.stringify({ documents }) })).json();
-  return new Map(rows.filter((row) => row.found).map((row) => [row.found.name.split("/").pop(), readTokens(row.found)]));
+  const documents = await getDocuments(env, uids.map((uid) => `/devices/${uid}`));
+  return new Map(documents.map((document) => [document.name.split("/").pop(), readTokens(document)]));
 }
 
 export async function setDevices(env, uid, tokens) {
@@ -129,9 +136,7 @@ export async function setDevices(env, uid, tokens) {
 }
 
 export async function getDriveAuth(env, uid) {
-  const response = await firestore(env, `/driveAuth/${uid}`);
-  if (response.status === 404) return null;
-  return (await response.json()).fields?.enc?.stringValue ?? null;
+  return (await getDocument(env, `/driveAuth/${uid}`))?.fields?.enc?.stringValue ?? null;
 }
 
 export async function setDriveAuth(env, uid, encrypted) {
@@ -180,9 +185,7 @@ export async function addCounts(env, deltas) {
 }
 
 export async function getCounts(env) {
-  const response = await firestore(env, "/stats/counters");
-  if (response.status === 404) return {};
-  const fields = (await response.json()).fields ?? {};
+  const fields = (await getDocument(env, "/stats/counters"))?.fields ?? {};
   return Object.fromEntries(Object.entries(fields).map(([statKey, value]) => [statKey, Number(value.integerValue ?? 0)]));
 }
 
