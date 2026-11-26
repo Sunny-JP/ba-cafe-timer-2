@@ -44,9 +44,9 @@ class HttpError extends Error {
   }
 }
 
-// 外部のエラー文はトークンを含み得るので、ログに出さない
-const safeMessage = (error) =>
-  /^(firestore \d+|identitytoolkit \d+|service account auth failed|jwk fetch failed|Drive API \d+)$/.test(error?.message) ? error.message : '';
+// 外部のエラー文はトークンを含み得るので、長い文字列は伏せる。構文エラーは中身を引用するので出さない
+const safeMessage = (error) => (error instanceof SyntaxError ? '' : String(error?.message ?? '').replace(/[\w.~+/=-]{20,}/g, '***').slice(0, 200));
+const stackFrames = (error) => String(error?.stack ?? '').split('\n').filter((line) => /^\s+at /.test(line)).slice(0, 5).join('\n');
 
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 
@@ -576,7 +576,7 @@ export class UserStore extends DurableObject {
       (data) => ({ data }),
       (error) => {
         if (error instanceof HttpError) return { error: { status: error.status, message: error.message, code: error.code } };
-        console.error('unhandled error in UserStore', error?.name, safeMessage(error));
+        console.error('unhandled error in UserStore', error?.name, safeMessage(error), stackFrames(error));
         return { error: { status: 500, message: 'サーバーエラーが発生しました。' } };
       },
     );
@@ -635,7 +635,7 @@ export default {
       return await work;
     } catch (error) {
       if (error instanceof HttpError) return json({ error: error.message, code: error.code }, error.status);
-      console.error('unhandled error', error?.name, safeMessage(error));
+      console.error('unhandled error', error?.name, safeMessage(error), stackFrames(error));
       return json({ error: 'サーバーエラーが発生しました。' }, 500);
     }
   },
