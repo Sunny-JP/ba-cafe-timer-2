@@ -1,6 +1,5 @@
 import { api, login, logout, onUser, setVerbose } from "./api.js";
-import { CHARACTERS, GIFTS, GIFT_EXP, RATE_COLOR, applyCatalog, ensureGameData, favoriteGifts, spritePosition } from "./gamedata.js";
-import { studentNames } from "./i18n.js";
+import { CHARACTERS, GIFTS, GIFT_EXP, RATE_COLOR, ensureGameData, spritePosition } from "./gamedata.js";
 import { showForegroundNotifications } from "./push.js";
 import { esc } from "./views.js";
 
@@ -19,7 +18,7 @@ const TABS = [
   ["push", "通知"],
   ["stats", "統計"],
   ["taptest", "タップテスト"],
-  ["characters", "キャラクター追加"],
+  ["characters", "キャラコード作成"],
   ["ads", "広告配信"],
 ];
 
@@ -142,35 +141,11 @@ function initStatsPage() {
 }
 
 function initCharactersPage() {
-  let catalog = { characters: [] };
   const EFFECTS = [null, "nb", "na", "ns", "sa", "ss"];
-  const EFFECT_LABELS = { nb: "通常・中", na: "通常・大", ns: "通常・特大", sa: "高級・大", ss: "高級・特大" };
   const EFFECT_SHORT_LABELS = { nb: "通中", na: "通大", ns: "通特", sa: "高大", ss: "高特" };
   const pickedGifts = new Map();
-
-  function renderCatalog() {
-    const query = $("#char-filter").value.trim().toLowerCase();
-    const rows = CHARACTERS.map((character) => ({ character, names: character.extra ? { ...character.names } : studentNames(character.name) })).filter(
-      ({ character, names }) => !query || [character.key, character.name, names.en, names.zh, names.ko].some((name) => name?.toLowerCase().includes(query)),
-    );
-    $("#char-count").textContent = `${rows.length} / ${CHARACTERS.length} 件 (追加分 ${catalog.characters.length} 件)`;
-    $("#char-list").innerHTML =
-      rows
-        .map(({ character, names }) => {
-          const nameText = [["ja", character.name], ["en", names.en], ["zh", names.zh], ["ko", names.ko]].map(([lang, name]) => `${lang}: ${name ? esc(name) : "-"}`).join(" / ");
-          const gifts = favoriteGifts(character)
-            .map(
-              (gift) => `<span class="pick mini" data-rate="${gift.rate}" style="--rate:${RATE_COLOR[gift.mult]}" title="${esc(gift.name)} (${EFFECT_LABELS[gift.rate]})">
-                <span class="gift-img" style="${spritePosition(gift)}"></span><span class="eff">${EFFECT_SHORT_LABELS[gift.rate]}</span></span>`,
-            )
-            .join("");
-          const badge = character.extra ? ' <span class="badge">追加</span>' : "";
-          const deleteButton = character.extra ? `<button class="ghost danger" data-del-char="${esc(character.key)}">削除</button>` : "";
-          return `<li><div class="charhead"><span class="charname"><b>${esc(character.key)}</b>${badge}<span class="note">${nameText}</span></span>${deleteButton}</div>
-            <div class="minis">${gifts || '<span class="note">好きな贈り物なし</span>'}</div></li>`;
-        })
-        .join("") || '<li class="note">該当するキャラクターがありません</li>';
-  }
+  const form = $("#char-form");
+  const hideCode = () => ($("#char-code").hidden = true);
 
   function renderGiftPicker() {
     $("#picker").innerHTML = GIFTS.map((gift, index) => {
@@ -182,31 +157,20 @@ function initCharactersPage() {
     $("#picked-count").textContent = `${pickedGifts.size} 件選択中`;
   }
 
-  async function saveCatalog(next, successMessage) {
-    try {
-      catalog = await api.adminSaveCatalog(next);
-      applyCatalog(catalog);
-      renderCatalog();
-      toast(successMessage);
-      return true;
-    } catch (error) {
-      toast(error.message);
-      return false;
-    }
-  }
-
-  $("#char-filter").oninput = renderCatalog;
-  $("#char-form").onsubmit = async (event) => {
+  form.oninput = hideCode;
+  form.onsubmit = (event) => {
     event.preventDefault();
     if (!pickedGifts.size) return toast("好きな贈り物を1つ以上選んでください");
-    const fields = new FormData(event.target);
-    const names = Object.fromEntries(["en", "zh", "ko"].map((lang) => [lang, fields.get(lang).trim()]).filter(([, name]) => name));
-    const character = { key: fields.get("key").trim(), name: fields.get("name").trim(), names, gifts: [...pickedGifts] };
-    if (await saveCatalog({ characters: [...catalog.characters, character] }, "キャラクターを追加しました")) {
-      pickedGifts.clear();
-      event.target.reset();
-      renderGiftPicker();
-    }
+    const fields = new FormData(form);
+    const [key, name, en, ko, zh] = ["key", "name", "en", "ko", "zh"].map((field) => fields.get(field).trim());
+    if (CHARACTERS.some((character) => character.key === key || character.name === name)) return toast("同じ key か名前のキャラが登録済みです");
+    // gamedata.js の並びに合わせて、獲得 EXP の高い順にする
+    const total = ([index, rate]) => GIFTS[index].exp * GIFT_EXP[rate];
+    const gifts = [...pickedGifts].sort((first, second) => total(second) - total(first) || GIFTS[first[0]].sprite - GIFTS[second[0]].sprite);
+    const quote = JSON.stringify;
+    $("#code-character").textContent = `  { key: ${quote(key)}, name: ${quote(name)}, gifts: ${quote(gifts)} },`;
+    $("#code-name").textContent = `  ${quote(name)}: {"en": ${quote(en)}, "ko": ${quote(ko || en)}, "zh": ${quote(zh || en)}},`;
+    $("#char-code").hidden = false;
   };
   document.addEventListener("click", async (event) => {
     const button = event.target.closest("button");
@@ -215,21 +179,22 @@ function initCharactersPage() {
       const nextEffect = EFFECTS[(EFFECTS.indexOf(pickedGifts.get(giftIndex) ?? null) + 1) % EFFECTS.length];
       if (nextEffect) pickedGifts.set(giftIndex, nextEffect);
       else pickedGifts.delete(giftIndex);
+      hideCode();
       renderGiftPicker();
-    } else if (button?.dataset.delChar && confirm("このキャラクターを削除しますか?(ユーザーの絆データは消えません)")) {
-      await saveCatalog({ characters: catalog.characters.filter((character) => character.key !== button.dataset.delChar) }, "削除しました");
+    } else if (button?.dataset.copy) {
+      await navigator.clipboard.writeText($(`#${button.dataset.copy}`).textContent).then(
+        () => toast("コピーしました"),
+        () => toast("コピーできませんでした"),
+      );
     }
   });
 
   return async () => {
     try {
       await ensureGameData({ fresh: true });
-      catalog = await api.catalog();
-      applyCatalog(catalog);
     } catch (error) {
       toast(error.message);
     }
-    renderCatalog();
     renderGiftPicker();
   };
 }

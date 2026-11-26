@@ -8,7 +8,6 @@ import {
   deleteUserData,
   getAdsConfig,
   getBondStats,
-  getCatalog,
   getCounts,
   getDevices,
   isAccountActive,
@@ -17,7 +16,6 @@ import {
   sendTestNotification,
   setAdsConfig,
   setBondStats,
-  setCatalog,
   setDevices,
   verifyIdToken,
   warmServiceToken,
@@ -118,7 +116,7 @@ async function addTapStats(env, tapTime) {
 async function syncBondStats(env, uid, items) {
   if (!env.FIREBASE_SERVICE_ACCOUNT) return;
   try {
-    const knownKeys = new Set([...CHARACTERS, ...(await getCatalog(env)).characters].map((character) => character.key));
+    const knownKeys = new Set(CHARACTERS.map((character) => character.key));
     const next = Object.fromEntries(
       Object.entries(bondStatCounts(items)).filter(([statKey]) => knownKeys.has(statKey.replace(/^bond_(?:n|ge\d+)_/, ''))),
     );
@@ -136,36 +134,6 @@ async function syncBondStats(env, uid, items) {
 const isAdmin = (env, uid) => (env.ADMIN_UIDS ?? '').split(',').some((adminUid) => adminUid.trim() === uid);
 const isAdminRoute = (routeKey) => /^\w+ \/api\/admin\//.test(routeKey);
 const NO_DEVICE_MESSAGE = 'この管理者アカウントで通知がオンになっていません。アプリ側で通知をオンにしてください。';
-
-function validateCatalog(characters) {
-  const fail = (message) => {
-    throw new HttpError(400, message);
-  };
-  if (!Array.isArray(characters) || characters.length > 200) fail('データが不正です。');
-  const builtInKeys = new Set(CHARACTERS.filter((character) => !character.extra).map((character) => character.key));
-  const usedKeys = new Set();
-  return characters.map((character) => {
-    const { key, name } = character ?? {};
-    if (!/^[a-z0-9_]{1,64}$/.test(key ?? '') || builtInKeys.has(key) || usedKeys.has(key)) fail('キャラクターの key が不正、または重複しています。');
-    if (typeof name !== 'string' || !name.trim() || name.length > 64) fail('キャラクター名が不正です。');
-    const names = {};
-    for (const [lang, required] of [['en', true], ['zh', false], ['ko', false]]) {
-      const translated = character.names?.[lang]?.trim?.() ?? '';
-      if (translated.length > 64 || (required && !translated)) fail(`名前(${lang})が不正です。`);
-      if (translated) names[lang] = translated;
-    }
-    if (!Array.isArray(character.gifts) || !character.gifts.length || character.gifts.length > GIFTS.length) fail('好きな贈り物を1つ以上選んでください。');
-    const seenGifts = new Set();
-    const gifts = character.gifts.map(([giftIndex, rate]) => {
-      const valid = Number.isInteger(giftIndex) && giftIndex >= 0 && giftIndex < GIFTS.length && !seenGifts.has(giftIndex) && rate in GIFT_EXP;
-      if (!valid) fail(`${name} の贈り物指定が不正です。`);
-      seenGifts.add(giftIndex);
-      return [giftIndex, rate];
-    });
-    usedKeys.add(key);
-    return { key, name: name.trim(), names, gifts };
-  });
-}
 
 // 新品を扱う正規取扱店の shopCode
 const AD_SHOP_CODES = [];
@@ -248,15 +216,14 @@ async function handleAds(env, ctx) {
   return json({ items: shuffled.slice(0, AD_COUNT) });
 }
 
-// 本体はデプロイまで変わらないので、ハッシュはカタログが変わったときだけ計算し直す
-let versionCache = { catalogText: null, version: null };
-async function gamedataVersion(catalog, data) {
-  const catalogText = JSON.stringify(catalog);
-  if (versionCache.catalogText !== catalogText) {
+// ゲームデータはデプロイまで変わらないので、ハッシュは一度だけ計算する
+let versionCache = null;
+async function gamedataVersion(data) {
+  if (!versionCache) {
     const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(JSON.stringify(data)));
-    versionCache = { catalogText, version: [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('') };
+    versionCache = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
   }
-  return versionCache.version;
+  return versionCache;
 }
 
 const routes = {
@@ -374,19 +341,15 @@ const routes = {
     return { ok: true };
   },
 
-  'GET /api/catalog': async ({ env }) => (env.FIREBASE_SERVICE_ACCOUNT ? getCatalog(env) : { characters: [] }),
-
-  'GET /api/gamedata': async ({ env, url }) => {
-    const catalog = env.FIREBASE_SERVICE_ACCOUNT ? await getCatalog(env) : { characters: [] };
+  'GET /api/gamedata': async ({ url }) => {
     const data = {
       bondExp: BOND_EXP,
       giftExp: GIFT_EXP,
       gifts: GIFTS,
       characters: CHARACTERS,
       names: { category: CATEGORY, gift: GIFT_NAME, student: STUDENT_NAME },
-      catalog,
     };
-    const version = await gamedataVersion(catalog, data);
+    const version = await gamedataVersion(data);
     return url.searchParams.get('v') === version ? { version, unchanged: true } : { version, ...data };
   },
 
@@ -401,7 +364,7 @@ const routes = {
   },
 
   'GET /api/admin/stats': async ({ env }) => {
-    const [counts, catalog, pushUsers, users] = await Promise.all([getCounts(env), getCatalog(env), countDevices(env), countUsers(env)]);
+    const [counts, pushUsers, users] = await Promise.all([getCounts(env), countDevices(env), countUsers(env)]);
     const count = (statKey) => Math.max(0, counts[statKey] ?? 0);
     const latestSeries = (prefix, limit) =>
       Object.entries(counts)
@@ -411,7 +374,7 @@ const routes = {
         .slice(0, limit);
     const distribution = (prefix, length, padded) => Array.from({ length }, (_, index) => count(`${prefix}${padded ? padTwo(index) : index}`));
 
-    const charNames = new Map([...CHARACTERS, ...catalog.characters].map((character) => [character.key, character.name]));
+    const charNames = new Map(CHARACTERS.map((character) => [character.key, character.name]));
     const bonds = [...charNames]
       .map(([key, name]) => ({
         key,
@@ -466,16 +429,6 @@ const routes = {
       result.queued = new Date(queuedAt).toISOString();
     }
     return result;
-  },
-
-  // 組み込みに移したキャラがカタログに残っていても保存できるようにする
-  'PUT /api/admin/catalog': async ({ env, body }) => {
-    const storedKeys = new Set((await getCatalog(env)).characters.map((character) => character.key));
-    const isBuiltIn = (key) => CHARACTERS.some((character) => !character.extra && character.key === key);
-    const submitted = Array.isArray(body?.characters) ? body.characters.filter((character) => !(storedKeys.has(character?.key) && isBuiltIn(character.key))) : body?.characters ?? [];
-    const catalog = { characters: validateCatalog(submitted) };
-    await setCatalog(env, catalog);
-    return catalog;
   },
 
   'POST /api/auth/drive': async ({ env, uid, body }) => {
@@ -590,7 +543,7 @@ const routes = {
   },
 };
 
-const WITHOUT_DRIVE = new Set(['PUT /api/devices', 'DELETE /api/devices', 'POST /api/auth/drive', 'GET /api/catalog', 'GET /api/gamedata']);
+const WITHOUT_DRIVE = new Set(['PUT /api/devices', 'DELETE /api/devices', 'POST /api/auth/drive', 'GET /api/gamedata']);
 // Drive のファイルを丸ごと書き換えるので、ユーザーごとに直列にする
 const SERIALIZED = new Set(['POST /api/taps', 'PUT /api/profile', 'POST /api/relationship', 'DELETE /api/relationship', 'DELETE /api/account', 'POST /api/import']);
 const HEAVY = new Set(['GET /api/export', 'POST /api/import', 'POST /api/auth/drive', 'DELETE /api/account']);

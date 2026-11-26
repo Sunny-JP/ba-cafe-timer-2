@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { loadNames, registerStudentNames } from "./i18n.js";
+import { loadNames } from "./i18n.js";
 
 export const BOND_MAX = 100;
 const SPRITE = { cols: 5, width: 142, height: 112 };
@@ -24,15 +24,6 @@ export function loadGameData(data) {
   GIFTS.splice(0, GIFTS.length, ...data.gifts);
   CHARACTERS.splice(0, CHARACTERS.length, ...data.characters);
   loadNames(data.names);
-  applyCatalog(data.catalog);
-}
-
-export function applyCatalog(catalog) {
-  for (let index = CHARACTERS.length - 1; index >= 0; index--) if (CHARACTERS[index].extra) CHARACTERS.splice(index, 1);
-  for (const character of catalog?.characters ?? []) {
-    if (!CHARACTERS.some((existing) => existing.key === character.key)) CHARACTERS.push({ ...character, extra: true });
-  }
-  registerStudentNames(catalog?.characters);
 }
 
 export function favoriteGifts(character) {

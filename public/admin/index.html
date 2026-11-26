@@ -64,22 +64,24 @@
           <p id="queue-result" class="result"></p>
         </section>
         <section data-tab="characters" hidden>
-          <h2>キャラクターの追加</h2>
-          <p class="note">好きな贈り物をタップして効果を選びます(タップするたびに 未選択 → 通常・中 → 通常・大 → 通常・特大 → 高級・大 → 高級・特大 → 未選択)。1つ以上選ぶ必要があります。</p>
+          <h2>キャラクターのコード作成</h2>
+          <p class="note">作ったコードを src/gamedata.js に貼ってデプロイすると、アプリに追加されます(この画面では保存しません)。好きな贈り物をタップして効果を選びます(タップするたびに 未選択 → 通常・中 → 通常・大 → 通常・特大 → 高級・大 → 高級・特大 → 未選択)。中国語・韓国語が空欄なら英語名を使います。</p>
           <form id="char-form" class="row">
             <label>key (英小文字・数字・_)<input name="key" required pattern="[a-z0-9_]{1,64}" placeholder="new_student" /></label>
             <label>名前 (日本語)<input name="name" required maxlength="64" /></label>
             <label>名前 (English)<input name="en" required maxlength="64" /></label>
             <label>名前 (中文・任意)<input name="zh" maxlength="64" /></label>
             <label>名前 (한국어・任意)<input name="ko" maxlength="64" /></label>
-            <button class="primary">追加</button>
+            <button class="primary">コードを作る</button>
             <span id="picked-count" class="note"></span>
           </form>
+          <div id="char-code" hidden>
+            <div class="row"><span>CHARACTERS に貼る (五十音順の位置)</span><button type="button" data-copy="code-character">コピー</button></div>
+            <pre id="code-character"></pre>
+            <div class="row"><span>STUDENT_NAME に貼る</span><button type="button" data-copy="code-name">コピー</button></div>
+            <pre id="code-name"></pre>
+          </div>
           <div class="picker" id="picker"></div>
-          <h2>現在の設定 (全キャラクター)</h2>
-          <p class="note">組み込みのキャラと、ここで追加したキャラ(「追加」バッジ)を表示します。削除できるのは追加したキャラだけです。効果の略記: 通=通常 / 高=高級、中・大・特=効果の大きさ。中国語・韓国語が未入力のキャラは、アプリでは英語名を表示します。</p>
-          <div class="row"><input id="char-filter" type="search" placeholder="key・名前で絞り込み" style="flex: 1 1 200px" /><span id="char-count" class="note"></span></div>
-          <ul class="list charlist" id="char-list"></ul>
         </section>
         <section data-tab="ads" hidden>
           <h2>広告配信</h2>

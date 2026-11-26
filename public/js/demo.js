@@ -39,7 +39,7 @@ function gameData() {
   }
   gifts.forEach((gift, index) => (names.gift[gift.name] = { en: `Sample Gift ${index + 1}`, ko: `샘플 선물 ${index + 1}`, zh: `示例礼物${index + 1}` }));
   for (const [, ja, en, ko, zh] of STUDENTS) names.student[ja] = { en, ko, zh };
-  return { bondExp, giftExp: { nb: 1, na: 1.5, ns: 2, sa: 1.5, ss: 2 }, gifts, characters, names, catalog: { characters: [] } };
+  return { bondExp, giftExp: { nb: 1, na: 1.5, ns: 2, sa: 1.5, ss: 2 }, gifts, characters, names };
 }
 
 function monthTaps(now) {

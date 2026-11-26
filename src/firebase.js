@@ -147,21 +147,6 @@ export async function deleteDriveAuth(env, uid) {
   await firestore(env, `/driveAuth/${uid}`, { method: "DELETE" });
 }
 
-const EMPTY_CATALOG = { characters: [] };
-let catalogCache = { value: null, expiresAt: 0 };
-
-export async function getCatalog(env) {
-  if (catalogCache.value && catalogCache.expiresAt > Date.now()) return catalogCache.value;
-  const value = await readJsonField(env, "/config/catalog", EMPTY_CATALOG);
-  catalogCache = { value, expiresAt: Date.now() + 30000 };
-  return value;
-}
-
-export async function setCatalog(env, catalog) {
-  await writeJsonField(env, "/config/catalog", catalog);
-  catalogCache = { value: catalog, expiresAt: Date.now() + 30000 };
-}
-
 let adsConfigCache = { value: null, expiresAt: 0 };
 
 export async function getAdsConfig(env) {

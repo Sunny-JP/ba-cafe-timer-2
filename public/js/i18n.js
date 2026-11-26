@@ -61,13 +61,6 @@ export function loadNames(names) {
   studentNameMap = { ...names.student };
 }
 
-export function registerStudentNames(characters) {
-  for (const character of characters ?? []) {
-    const english = character.names?.en ?? character.name;
-    studentNameMap[character.name] = { en: english, zh: character.names?.zh || english, ko: character.names?.ko || english };
-  }
-}
-
 export const studentName = (name) => studentNameMap[name]?.[currentLang] ?? name;
 export const studentNames = (name) => studentNameMap[name] ?? {};
 export const giftName = (name) => giftNames[name]?.[currentLang] ?? name;

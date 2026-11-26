@@ -26,14 +26,7 @@ body, #admin * { -webkit-user-select: text; user-select: text; -webkit-touch-cal
 .pick[data-rate] { border-color: var(--rate); }
 .pick .dot { position: absolute; top: 3px; left: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--rate); display: none; }
 .pick[data-rate] .dot { display: block; }
-.charlist li { display: grid; gap: 6px; }
-.charhead { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
-.charname { display: grid; gap: 2px; min-width: 0; }
-.charname .note { overflow-wrap: anywhere; }
-.minis { display: flex; flex-wrap: wrap; gap: 6px; }
-.pick.mini { width: 52px; padding: 2px 1px; }
-.pick.mini .gift-img { --s: .3; }
-.badge { padding: 1px 6px; border-radius: 8px; background: var(--primary-container); color: var(--on-primary-container); font-size: .625rem; }
+#char-code pre { margin: 4px 0 12px; padding: 8px; background: var(--container); border-radius: 8px; font-size: .75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .panel { background: var(--container); border-radius: 16px; padding: 14px 16px 12px; display: grid; gap: 8px; align-content: start; min-width: 0; }
 .panel h2 { margin: 0; font-size: 0.9375rem; }
 .panel .sub { font-size: 0.75rem; color: var(--on-variant); margin-top: -4px; }

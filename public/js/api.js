@@ -218,7 +218,6 @@ export const api = {
   registerDevice: (token) => request("PUT", "/api/devices", { token }),
   unregisterDevice: (token) => request("DELETE", "/api/devices", { token }),
   gamedata: (version) => request("GET", `/api/gamedata${version ? `?v=${version}` : ""}`),
-  catalog: () => request("GET", "/api/catalog"),
   linkDrive: (code) => request("POST", "/api/auth/drive", { code }),
   exportData: (from) => request("GET", `/api/export${from ? `?from=${from}` : ""}`),
   importData: (data) => request("POST", "/api/import", data),
@@ -227,7 +226,6 @@ export const api = {
   adminStats: () => request("GET", "/api/admin/stats"),
   adminTestPush: () => request("POST", "/api/admin/test-push"),
   adminTestTap: (body) => request("POST", "/api/admin/test-tap", body),
-  adminSaveCatalog: (catalog) => request("PUT", "/api/admin/catalog", catalog),
   adminAds: () => request("GET", "/api/admin/ads"),
   adminSetAds: (enabled) => request("PUT", "/api/admin/ads", { enabled }),
 };
