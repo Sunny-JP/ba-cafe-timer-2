@@ -1,4 +1,4 @@
-import { api, log, login, logout, onUser, preloadGsi, requestDriveCode } from "./api.js";
+import { api, log, login, onUser, preloadGsi, requestDriveCode } from "./api.js";
 import { saveCalendarImage } from "./chart.js";
 import {
   clearCalendarCache,
@@ -12,6 +12,7 @@ import {
   loadAll,
   loadCalendar,
   loadDeferred,
+  logoutDevice,
   reloadWaitMs,
   primeBond,
   recordTap,
@@ -139,7 +140,7 @@ const actions = {
     render();
   },
   async logout() {
-    if (await confirmDialog(t("confirmLogout"), t("logout"))) return logout();
+    if (await confirmDialog(t("confirmLogout"), t("logout"))) return logoutDevice();
   },
   "delete-account": deleteAccount,
 };

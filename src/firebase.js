@@ -111,7 +111,15 @@ async function readJsonField(env, path, fallback) {
 export async function getDevices(env, uid) {
   const response = await firestore(env, `/devices/${uid}`);
   if (response.status === 404) return [];
-  return ((await response.json()).fields?.tokens?.arrayValue?.values ?? []).map((value) => value.stringValue);
+  return readTokens(await response.json());
+}
+
+const readTokens = (document) => (document.fields?.tokens?.arrayValue?.values ?? []).map((value) => value.stringValue);
+
+async function getDevicesByUser(env, uids) {
+  const documents = uids.map((uid) => `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/devices/${uid}`);
+  const rows = await (await firestore(env, ":batchGet", { method: "POST", body: JSON.stringify({ documents }) })).json();
+  return new Map(rows.filter((row) => row.found).map((row) => [row.found.name.split("/").pop(), readTokens(row.found)]));
 }
 
 export async function setDevices(env, uid, tokens) {
@@ -238,8 +246,9 @@ async function queryPending(env, where) {
     .map((row) => ({ name: row.document.name, uid: row.document.fields.uid.stringValue }));
 }
 
-async function deleteDocument(env, name) {
-  await fetch(`https://firestore.googleapis.com/v1/${name}`, { method: "DELETE", headers: { Authorization: `Bearer ${await serviceToken(env)}` } });
+async function deleteDocuments(env, names, { mustExist = false } = {}) {
+  const writes = names.map((name) => ({ delete: name, ...(mustExist && { currentDocument: { exists: true } }) }));
+  return (await firestore(env, ":commit", { method: "POST", body: JSON.stringify({ writes }) })).ok;
 }
 
 export async function deleteUserData(env, uid) {
@@ -249,7 +258,7 @@ export async function deleteUserData(env, uid) {
   await firestore(env, `/devices/${uid}`, { method: "DELETE" });
   await deleteDriveAuth(env, uid);
   const pending = await queryPending(env, { fieldFilter: { field: { fieldPath: "uid" }, op: "EQUAL", value: { stringValue: uid } } });
-  for (const item of pending) await deleteDocument(env, item.name);
+  if (pending.length) await deleteDocuments(env, pending.map((item) => item.name));
   await deleteAuthUser(env, uid);
 }
 
@@ -271,37 +280,60 @@ async function sendFcm(env, token, message = randomMessage()) {
   return { result: response.status === 404 || response.status === 400 ? "gone" : "error", status: response.status, code };
 }
 
-async function sendToUser(env, uid, message, onResult) {
-  const tokens = await getDevices(env, uid);
-  const alive = [];
-  for (const token of tokens) {
-    const sent = await sendFcm(env, token, message);
-    onResult(sent);
-    if (sent.result !== "gone") alive.push(token);
-  }
-  if (alive.length !== tokens.length) await setDevices(env, uid, alive);
-  return tokens.length;
+async function sendToDevices(env, tokens, message, onResult) {
+  const alive = await Promise.all(
+    tokens.map(async (token) => {
+      const sent = await sendFcm(env, token, message);
+      onResult(sent);
+      return sent.result === "gone" ? null : token;
+    }),
+  );
+  return alive.filter(Boolean);
 }
 
 export async function sendTestNotification(env, uid) {
-  const summary = { devices: 0, ok: 0, gone: 0, error: 0, failures: [] };
-  summary.devices = await sendToUser(env, uid, TEST_MESSAGE, (sent) => {
+  const tokens = await getDevices(env, uid);
+  const summary = { devices: tokens.length, ok: 0, gone: 0, error: 0, failures: [] };
+  const alive = await sendToDevices(env, tokens, TEST_MESSAGE, (sent) => {
     summary[sent.result]++;
     if (sent.result !== "ok") summary.failures.push(`${sent.status} ${sent.code}`.trim());
   });
+  if (alive.length !== tokens.length) await setDevices(env, uid, alive);
   return summary;
 }
+
+// 無料プランは 1 回の実行で外部への通信が 50 回まで。残りは次の分に送る
+const SENDS_PER_RUN = 40;
+
+const logFailure = (error) => console.error("send due notification failed", error?.message?.startsWith("firestore") ? error.message : error?.name);
 
 export async function sendDueNotifications(env) {
   const due = await queryPending(env, {
     fieldFilter: { field: { fieldPath: "sendAt" }, op: "LESS_THAN_OR_EQUAL", value: { timestampValue: new Date().toISOString() } },
   });
+  if (!due.length) return;
+  const devices = await getDevicesByUser(env, [...new Set(due.map((item) => item.uid))]);
+  const claimed = [];
+  let sendCount = 0;
   for (const item of due) {
-    try {
-      await sendToUser(env, item.uid, undefined, (sent) => sent.result !== "ok" && console.error("fcm send failed", sent.status, sent.code));
-      await deleteDocument(env, item.name);
-    } catch (error) {
-      console.error("send due notification failed", error?.message?.startsWith("firestore") ? error.message : error?.name);
-    }
+    sendCount += devices.get(item.uid)?.length ?? 0;
+    if (sendCount > SENDS_PER_RUN) break;
+    claimed.push(item);
   }
+  // 二重に届かないよう送る前に予約を消す。別の実行が先に消していたら、何も送らない
+  if (!(await deleteDocuments(env, claimed.map((item) => item.name), { mustExist: true }))) return;
+
+  const stale = new Map();
+  await Promise.all(
+    claimed.map(async ({ uid }) => {
+      const tokens = devices.get(uid) ?? [];
+      try {
+        const alive = await sendToDevices(env, tokens, undefined, (sent) => sent.result !== "ok" && console.error("fcm send failed", sent.status, sent.code));
+        if (alive.length !== tokens.length) stale.set(uid, alive);
+      } catch (error) {
+        logFailure(error);
+      }
+    }),
+  );
+  for (const [uid, alive] of stale) await setDevices(env, uid, alive).catch(logFailure);
 }

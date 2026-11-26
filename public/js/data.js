@@ -2,6 +2,7 @@ import { ReauthRequired, api, log, logout, requestDriveCode, setVerbose } from "
 import { ensureGameData, hasGameData } from "./gamedata.js";
 import { t } from "./i18n.js";
 import { discardOutbox, flush, latestWithQueued, queueProfile, queueTap, withQueuedProfile, withQueuedTaps } from "./outbox.js";
+import { disablePush, pushEnabled } from "./push.js";
 import { logicalMonth, nextTapTime, shouldScheduleNotification, uuidv7 } from "./time.js";
 import { initBondChar, loadRelCache, saveBootCache, saveRelCache, state, store } from "./state.js";
 import { $, busy, confirmDialog, downloadBlob, render, renderCalendarArea, showAds, showReauth, toTimerScreen, toast, withBusy } from "./ui.js";
@@ -233,12 +234,38 @@ export async function deleteBond(id) {
   render();
 }
 
+async function fetchExport() {
+  let { next, ...data } = await api.exportData();
+  while (next) {
+    const page = await api.exportData(next);
+    data.taps.push(...page.taps);
+    next = page.next;
+  }
+  return data;
+}
+
 export async function exportData() {
-  const data = await withBusy(t("exporting"), 1, () => guarded(() => api.exportData()));
+  const data = await withBusy(t("exporting"), 1, () => guarded(fetchExport));
   if (!data) return;
   const fileName = `cafetimer-export-${new Date().toISOString().slice(0, 10)}.json`;
   downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), fileName);
   toast(t("exported", { taps: data.taps.length, bonds: data.relationship.length }));
+}
+
+// サーバーが 1 回で受け付けるのは 12 か月分まで
+function splitImport(data) {
+  if (!Array.isArray(data?.taps)) return [data];
+  const months = new Map();
+  for (const tap of data.taps) {
+    const time = Date.parse(tap?.tap_time);
+    const month = Number.isFinite(time) ? logicalMonth(time) : "";
+    if (!months.has(month)) months.set(month, []);
+    months.get(month).push(tap);
+  }
+  const groups = [...months.values()];
+  const parts = [{ ...data, taps: groups.slice(0, 12).flat() }];
+  for (let start = 12; start < groups.length; start += 12) parts.push({ taps: groups.slice(start, start + 12).flat() });
+  return parts;
 }
 
 export async function importFile(file) {
@@ -252,8 +279,12 @@ export async function importFile(file) {
       return toast(t("badJson"));
     }
     busy.show(t("importSending", { taps: parsed?.taps?.length ?? 0, bonds: parsed?.relationship?.length ?? 0 }), 1);
-    const result = await guarded(() => api.importData(parsed));
-    if (!result) return;
+    const result = { taps: 0, relationship: 0, skipped: 0 };
+    for (const [index, part] of splitImport(parsed).entries()) {
+      const partResult = await guarded(() => api.importData(part));
+      if (!partResult) return void (index && (await loadAll()));
+      for (const key of Object.keys(result)) result[key] += partResult[key];
+    }
     monthCache.clear();
     busy.show(t("importRefresh"), 2);
     await loadAll();
@@ -263,12 +294,22 @@ export async function importFile(file) {
   }
 }
 
+// 共有端末で次の人に通知が届かないよう、登録を解除してからログアウトする
+export async function logoutDevice() {
+  if (pushEnabled()) await disablePush().catch((error) => log.warn("push", "unregister failed", error));
+  state.pushOn = false;
+  await logout();
+}
+
 export async function deleteAccount() {
   if (!(await confirmDialog(t("confirmDelAccount"), t("del"), true))) return;
   toTimerScreen();
-  const deleted = await withBusy(t("deletingAccount"), 0, () => guarded(() => api.deleteAccount()));
+  const deleted = await withBusy(t("deletingAccount"), 0, () => guarded(async () => {
+    while ((await api.deleteAccount()).done === false);
+    return true;
+  }));
   if (!deleted) return;
   discardOutbox();
   toast(t("deleted"));
-  await logout();
+  await logoutDevice();
 }

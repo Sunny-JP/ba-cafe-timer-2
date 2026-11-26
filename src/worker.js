@@ -57,6 +57,13 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const IMPORT_FROM_DATE = '2025-01-01';
 const IMPORT_FROM_TIME = Date.parse(`${IMPORT_FROM_DATE}T00:00:00+09:00`);
 const MINUTE = 60 * 1000;
+const MAX_BODY_LENGTH = 256 * 1024;
+const MAX_IMPORT_LENGTH = 2 * 1024 * 1024;
+const MAX_IMPORT_BONDS = 5000;
+// 無料プランの通信回数の上限 (1 回 50) に収める。超える分はアプリが分けて送る
+const MAX_IMPORT_MONTHS = 12;
+const DELETE_FILES_PER_REQUEST = 25;
+const EXPORT_MONTHS_PER_REQUEST = 36;
 const DAY = 24 * 60 * MINUTE;
 
 const isIsoTime = (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
@@ -78,7 +85,8 @@ function bondError(bond) {
   return null;
 }
 
-const bondExists = (items, bond) => items.some((item) => item.char_key === bond.char_key && item.bond_level === bond.bond_level);
+const bondKey = (bond) => `${bond.char_key}:${bond.bond_level}`;
+const bondExists = (items, bond) => items.some((item) => bondKey(item) === bondKey(bond));
 
 const BOND_THRESHOLDS = [100, 95, 90, 80, 70, 60, 50];
 
@@ -240,6 +248,17 @@ async function handleAds(env, ctx) {
   return json({ items: shuffled.slice(0, AD_COUNT) });
 }
 
+// 本体はデプロイまで変わらないので、ハッシュはカタログが変わったときだけ計算し直す
+let versionCache = { catalogText: null, version: null };
+async function gamedataVersion(catalog, data) {
+  const catalogText = JSON.stringify(catalog);
+  if (versionCache.catalogText !== catalogText) {
+    const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(JSON.stringify(data)));
+    versionCache = { catalogText, version: [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('') };
+  }
+  return versionCache.version;
+}
+
 const routes = {
   'GET /api/bootstrap': async ({ drive, env, uid, url }) => {
     const month = url.searchParams.get('month') ?? logicalMonth(Date.now());
@@ -317,11 +336,7 @@ const routes = {
     return { profile, conflicts };
   },
 
-  'GET /api/relationship': async ({ drive, env, uid, ctx }) => {
-    const items = await readBonds(drive);
-    ctx.waitUntil(syncBondStats(env, uid, [...items]));
-    return { relationship: items.sort(byRecordedDesc) };
-  },
+  'GET /api/relationship': async ({ drive }) => ({ relationship: (await readBonds(drive)).sort(byRecordedDesc) }),
 
   'POST /api/relationship': async ({ drive, env, uid, body }) => {
     const error = bondError(body);
@@ -362,16 +377,16 @@ const routes = {
   'GET /api/catalog': async ({ env }) => (env.FIREBASE_SERVICE_ACCOUNT ? getCatalog(env) : { characters: [] }),
 
   'GET /api/gamedata': async ({ env, url }) => {
+    const catalog = env.FIREBASE_SERVICE_ACCOUNT ? await getCatalog(env) : { characters: [] };
     const data = {
       bondExp: BOND_EXP,
       giftExp: GIFT_EXP,
       gifts: GIFTS,
       characters: CHARACTERS,
       names: { category: CATEGORY, gift: GIFT_NAME, student: STUDENT_NAME },
-      catalog: env.FIREBASE_SERVICE_ACCOUNT ? await getCatalog(env) : { characters: [] },
+      catalog,
     };
-    const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(JSON.stringify(data)));
-    const version = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const version = await gamedataVersion(catalog, data);
     return url.searchParams.get('v') === version ? { version, unchanged: true } : { version, ...data };
   },
 
@@ -469,7 +484,7 @@ const routes = {
   },
 
   'DELETE /api/account': async ({ drive, env, uid }) => {
-    await drive.removeAll();
+    if (!(await drive.removeAll(DELETE_FILES_PER_REQUEST))) return { done: false };
     if (env.FIREBASE_SERVICE_ACCOUNT) {
       try {
         await unlinkDrive(env, uid);
@@ -478,15 +493,22 @@ const routes = {
         console.error('deleteUserData failed', error?.name, safeMessage(error));
       }
     }
-    return { ok: true };
+    return { done: true };
   },
 
-  'GET /api/export': async ({ drive }) => {
-    const fileNames = [...(await drive.index()).keys()].filter((fileName) => /^taps-\d{4}-\d{2}\.json$/.test(fileName)).sort();
+  'GET /api/export': async ({ drive, url }) => {
+    const from = url.searchParams.get('from');
+    if (from && !isMonth(from)) throw new HttpError(400, 'from が不正です。');
+    const months = [...(await drive.index()).keys()]
+      .map((fileName) => /^taps-(\d{4}-\d{2})\.json$/.exec(fileName)?.[1])
+      .filter((month) => month && (!from || month >= from))
+      .sort();
     const taps = [];
-    for (const fileName of fileNames) {
-      for (const tap of (await drive.read(fileName, { taps: [] })).taps) taps.push({ id: tap.id, tap_time: tap.tap_time });
+    for (const month of months.slice(0, EXPORT_MONTHS_PER_REQUEST)) {
+      for (const tap of await readTaps(drive, month)) taps.push({ id: tap.id, tap_time: tap.tap_time });
     }
+    const page = { taps: taps.sort(byTapTime), next: months[EXPORT_MONTHS_PER_REQUEST] ?? null };
+    if (from) return page;
     const profile = await readProfile(drive);
     const relationship = (await readBonds(drive)).map(({ id, char_key, bond_level, recorded_at, created_at, updated_at }) => ({
       id,
@@ -496,7 +518,7 @@ const routes = {
       created_at,
       updated_at,
     }));
-    return { schema: 1, taps: taps.sort(byTapTime), relationship, profile: { ticket1_time: profile.ticket1_time, ticket2_time: profile.ticket2_time } };
+    return { schema: 1, ...page, relationship, profile: { ticket1_time: profile.ticket1_time, ticket2_time: profile.ticket2_time } };
   },
 
   'POST /api/import': async ({ drive, env, uid, body }) => {
@@ -516,6 +538,8 @@ const routes = {
       const normalized = { id: isUuid(tap.id) ? tap.id : uuidv7(tapTime), tap_time: new Date(tapTime).toISOString() };
       tapsByMonth.set(month, [...(tapsByMonth.get(month) ?? []), normalized]);
     }
+    if (tapsByMonth.size > MAX_IMPORT_MONTHS) throw new HttpError(413, `一度に取り込めるのは ${MAX_IMPORT_MONTHS} か月分までです。`);
+    if (body.relationship?.length > MAX_IMPORT_BONDS) throw new HttpError(413, `絆の記録は ${MAX_IMPORT_BONDS} 件までです。`);
     for (const [month, incoming] of tapsByMonth) {
       const merged = await readTaps(drive, month);
       const knownIds = new Set(merged.map((tap) => tap.id));
@@ -533,12 +557,14 @@ const routes = {
 
     if (Array.isArray(body.relationship)) {
       const items = await readBonds(drive);
+      const knownBonds = new Set(items.map(bondKey));
       const now = new Date().toISOString();
       for (const bond of body.relationship) {
-        if (bondError(bond || {}) || bond.recorded_at < IMPORT_FROM_DATE || bondExists(items, bond)) {
+        if (bondError(bond || {}) || bond.recorded_at < IMPORT_FROM_DATE || knownBonds.has(bondKey(bond))) {
           result.skipped++;
           continue;
         }
+        knownBonds.add(bondKey(bond));
         items.push({
           id: isUuid(bond.id) ? bond.id : uuidv7(),
           char_key: bond.char_key,
@@ -567,7 +593,7 @@ const routes = {
 const WITHOUT_DRIVE = new Set(['PUT /api/devices', 'DELETE /api/devices', 'POST /api/auth/drive', 'GET /api/catalog', 'GET /api/gamedata']);
 // Drive のファイルを丸ごと書き換えるので、ユーザーごとに直列にする
 const SERIALIZED = new Set(['POST /api/taps', 'PUT /api/profile', 'POST /api/relationship', 'DELETE /api/relationship', 'DELETE /api/account', 'POST /api/import']);
-const HEAVY = new Set(['POST /api/import', 'POST /api/auth/drive', 'DELETE /api/account']);
+const HEAVY = new Set(['GET /api/export', 'POST /api/import', 'POST /api/auth/drive', 'DELETE /api/account']);
 
 async function execute({ env, ctx, routeKey, uid, body, url }) {
   let drive = null;
@@ -604,6 +630,18 @@ export class UserStore extends DurableObject {
   }
 }
 
+async function readBody(request, limit) {
+  const tooLarge = new HttpError(413, 'データが大きすぎます。');
+  if (Number(request.headers.get('Content-Length')) > limit) throw tooLarge;
+  const text = await request.text();
+  if (text.length > limit) throw tooLarge;
+  try {
+    return JSON.parse(text) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 async function handle(request, env, ctx) {
   const url = new URL(request.url);
   const routeKey = `${request.method} ${url.pathname}`;
@@ -619,14 +657,12 @@ async function handle(request, env, ctx) {
     throw new HttpError(403, '管理者ではありません。');
   }
 
-  let body = {};
-  if (request.method !== 'GET') {
-    const limiter = HEAVY.has(routeKey) ? env.HEAVY_LIMIT : env.WRITE_LIMIT;
-    if (limiter && !(await limiter.limit({ key: uid })).success) {
-      throw new HttpError(429, '操作が多すぎます。しばらく待ってからやり直してください。', 'rate_limited');
-    }
-    body = (await request.json().catch(() => null)) ?? {};
+  const isRead = request.method === 'GET';
+  const limiter = HEAVY.has(routeKey) ? env.HEAVY_LIMIT : isRead ? env.READ_LIMIT : env.WRITE_LIMIT;
+  if (limiter && !(await limiter.limit({ key: uid })).success) {
+    throw new HttpError(429, '操作が多すぎます。しばらく待ってからやり直してください。', 'rate_limited');
   }
+  const body = isRead ? {} : await readBody(request, routeKey === 'POST /api/import' ? MAX_IMPORT_LENGTH : MAX_BODY_LENGTH);
 
   if (SERIALIZED.has(routeKey) && env.USER_STORE) {
     const result = await env.USER_STORE.get(env.USER_STORE.idFromName(uid)).run(routeKey, uid, body, url.href);

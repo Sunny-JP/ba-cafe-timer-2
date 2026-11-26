@@ -36,9 +36,13 @@ export async function enablePush() {
 
 export async function disablePush() {
   try {
-    await api.unregisterDevice(await currentToken());
+    const token = await currentToken();
     const { getMessaging, deleteToken } = await loadMessaging();
-    await deleteToken(getMessaging(app));
+    try {
+      await api.unregisterDevice(token);
+    } finally {
+      await deleteToken(getMessaging(app));
+    }
   } finally {
     localStorage.removeItem(KEY);
   }

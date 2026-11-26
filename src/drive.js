@@ -210,9 +210,12 @@ export class Drive {
     });
   }
 
-  async removeAll() {
-    for (const id of (await this.index(true)).values()) await this.fetch(`${API}/files/${id}`, { method: 'DELETE' });
-    this.ids = new Map();
+  // 全部消し終えたら true
+  async removeAll(limit = Infinity) {
+    const ids = [...(await this.index(true)).values()];
+    for (const id of ids.slice(0, limit)) await this.fetch(`${API}/files/${id}`, { method: 'DELETE' });
+    this.ids = null;
     if (this.uid) fileIndexCache.delete(this.uid);
+    return ids.length <= limit;
   }
 }

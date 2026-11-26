@@ -220,7 +220,7 @@ export const api = {
   gamedata: (version) => request("GET", `/api/gamedata${version ? `?v=${version}` : ""}`),
   catalog: () => request("GET", "/api/catalog"),
   linkDrive: (code) => request("POST", "/api/auth/drive", { code }),
-  exportData: () => request("GET", "/api/export"),
+  exportData: (from) => request("GET", `/api/export${from ? `?from=${from}` : ""}`),
   importData: (data) => request("POST", "/api/import", data),
   deleteAccount: () => request("DELETE", "/api/account"),
   adminMe: () => request("GET", "/api/admin/me"),
