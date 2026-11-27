@@ -848,9 +848,9 @@ const TEXT = {
     zh: `致谢`,
   },
   "operator.p2": {
-    ja: `ブルーアーカイブ(ブルアカ)攻略 Wiki 様(絆ランクテーブル・生徒さんごとの贈り物対応付けに使用)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB(生徒さんの名前の翻訳などに使用)<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
+    ja: `ブルーアーカイブ(ブルアカ)攻略 Wiki 様(絆ランクテーブル・生徒さんごとの贈り物対応付けに使用)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB 様(生徒さんの名前の翻訳などに使用)<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
     en: `Blue Archive Strategy Wiki (used for the bond rank table and student gift mappings)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB (used for student name translations and more)<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
-    ko: `블루 아카이브 공략 Wiki 님(인연 랭크 표·학생별 선물 대응에 사용)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB(학생 이름 번역 등에 사용)<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
+    ko: `블루 아카이브 공략 Wiki 님(인연 랭크 표·학생별 선물 대응에 사용)<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB 님(학생 이름 번역 등에 사용)<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
     zh: `蔚蓝档案攻略 Wiki（用于羁绊等级表及各学生礼物对应）<br> HP: <a href="https://bluearchive.wikiru.jp/" target="_blank" rel="noopener noreferrer">https://bluearchive.wikiru.jp/</a><br>Schale DB（用于学生姓名翻译等）<br> HP: <a href="https://schaledb.com" target="_blank" rel="noopener noreferrer">https://schaledb.com</a>`,
   },
   "changelog.title": {
