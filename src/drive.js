@@ -38,7 +38,6 @@ const requestToken = (env, params) => postForm(TOKEN_URL, { client_id: GOOGLE_CL
 const revoke = (token) => postForm(REVOKE_URL, { token }).catch(() => {});
 
 const accessTokens = new Map();
-const accessTokenRequests = new Map();
 const TOKEN_CACHE_URL = 'https://cafetimer2.rabbit1.cc/__cache/drive-token/';
 const tokenCacheKey = (uid) => `${TOKEN_CACHE_URL}${encodeURIComponent(uid)}`;
 const edgeCache = () => (typeof caches === 'undefined' ? null : caches.default);
@@ -86,15 +85,11 @@ export async function linkDrive(env, uid, code) {
   return true;
 }
 
-export function getAccessToken(env, uid) {
+export async function getAccessToken(env, uid) {
   const cached = accessTokens.get(uid);
-  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.token);
-  if (!isConfigured(env)) return Promise.resolve(null);
-  if (!accessTokenRequests.has(uid)) {
-    const request = (async () => (await sharedAccessToken(env, uid)) ?? refreshAccessToken(env, uid))();
-    accessTokenRequests.set(uid, request.finally(() => accessTokenRequests.delete(uid)));
-  }
-  return accessTokenRequests.get(uid);
+  if (cached && cached.expiresAt > Date.now()) return cached.token;
+  if (!isConfigured(env)) return null;
+  return (await sharedAccessToken(env, uid)) ?? refreshAccessToken(env, uid);
 }
 
 async function refreshAccessToken(env, uid) {
@@ -129,7 +124,6 @@ export class DriveError extends Error {
 
 const INDEX_TTL = 10 * 60 * 1000;
 const fileIndexCache = new Map();
-const fileIndexRequests = new Map();
 
 export class Drive {
   constructor(token, uid) {
@@ -138,6 +132,7 @@ export class Drive {
     const cached = uid && fileIndexCache.get(uid);
     this.ids = cached && cached.expiresAt > Date.now() ? cached.ids : null;
     this.fresh = false;
+    this.listing = null;
   }
 
   async fetch(url, init = {}) {
@@ -148,13 +143,8 @@ export class Drive {
 
   async index(refresh = false) {
     if (!this.ids || refresh) {
-      const sharable = !refresh && this.uid;
-      let request = sharable && fileIndexRequests.get(this.uid);
-      if (!request) {
-        request = this.listFiles();
-        if (sharable) fileIndexRequests.set(this.uid, (request = request.finally(() => fileIndexRequests.delete(this.uid))));
-      }
-      this.ids = await request;
+      this.listing ??= this.listFiles().finally(() => (this.listing = null));
+      this.ids = await this.listing;
       this.fresh = true;
     }
     return this.ids;

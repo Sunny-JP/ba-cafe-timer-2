@@ -78,3 +78,18 @@ test('新規作成したファイルは、次のリクエストでも一覧を�
   await new Drive('t', uid).write('relationship.json', { items: [1] });
   assert.deepEqual(calls, ['PATCH /upload/drive/v3/files/f1']);
 });
+
+test('同じリクエスト内で重なった読み込みは、ファイル一覧の取得を1本にまとめる', async () => {
+  const drive = new Drive('t', freshUid());
+  await Promise.all([drive.read('profile.json', {}), drive.read('relationship.json', {})]);
+  assert.deepEqual(calls, ['GET /drive/v3/files']);
+});
+
+test('前のリクエストの一覧取得が終わらなくても、次のリクエストは待たされない', async () => {
+  const uid = freshUid();
+  const respond = globalThis.fetch;
+  globalThis.fetch = () => new Promise(() => {});
+  new Drive('t', uid).read('profile.json', {});
+  globalThis.fetch = respond;
+  assert.deepEqual(await new Drive('t', uid).read('profile.json', {}), {});
+});

@@ -18,7 +18,6 @@ import {
   setBondStats,
   setDevices,
   verifyIdToken,
-  warmServiceToken,
 } from './firebase.js';
 import { BOND_EXP, CATEGORY, CHARACTERS, GIFTS, GIFT_EXP, GIFT_NAME, STUDENT_NAME } from './gamedata.js';
 import {
@@ -601,7 +600,6 @@ async function handle(request, env, ctx) {
   if (!routes[routeKey]) throw new HttpError(404, 'Not Found');
 
   const bearer = /^Bearer (.+)$/.exec(request.headers.get('Authorization') ?? '')?.[1];
-  if (bearer) warmServiceToken(env);
   const token = bearer && (await verifyIdToken(bearer, env.FIREBASE_PROJECT_ID));
   if (!token) throw new HttpError(401, '認証が必要です。', 'id_token');
   const uid = token.sub;

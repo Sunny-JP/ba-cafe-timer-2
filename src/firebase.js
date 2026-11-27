@@ -41,20 +41,10 @@ export async function verifyIdToken(token, projectId) {
 }
 
 let serviceTokenCache = { token: null, expiresAt: 0 };
-let serviceTokenRequest = null;
 
-function serviceToken(env) {
-  if (serviceTokenCache.token && serviceTokenCache.expiresAt > Date.now() + 60000) return Promise.resolve(serviceTokenCache.token);
-  serviceTokenRequest ??= requestServiceToken(env).finally(() => (serviceTokenRequest = null));
-  return serviceTokenRequest;
-}
-
-// 起動直後の待ち時間を減らすため、先に取っておく
-export function warmServiceToken(env) {
-  if (env.FIREBASE_SERVICE_ACCOUNT) serviceToken(env).catch(() => {});
-}
-
-async function requestServiceToken(env) {
+// 取得中の Promise は共有しない。作ったリクエストが先に終わると解決しなくなり、isolate が壊れたままになる
+async function serviceToken(env) {
+  if (serviceTokenCache.token && serviceTokenCache.expiresAt > Date.now() + 60000) return serviceTokenCache.token;
   const account = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
   const now = Math.floor(Date.now() / 1000);
   const scope = [
